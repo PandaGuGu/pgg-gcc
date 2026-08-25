@@ -1,0 +1,69 @@
+/* boot0.pgc B2a self-host skeleton: read expr -> emit i386 AT&T .s (eggless; v0 template self-derived, flat op-stack parser per generic compiler princ., ISO 9899:1990 6.3) */
+int pg_quiet=1;
+char src_buf[4096];
+int src_len;
+int pos,tk,tv,tp,tl,aw,opn;
+int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8;
+int oq[40];
+char eb[40];
+int wd(int at,int n){ if(n/10!=0){ at=wd(at,n/10); } eb[at]='0'+(n-(n/10)*10); return at+1; }
+void ml(){ int i,j,k; i=0;
+eb[0]='e'; eb[1]='r'; eb[2]='r'; eb[3]='o'; eb[4]='r'; eb[5]=':'; eb[6]=' '; i=7;
+i=wd(i,tp); eb[i]=' '; i=i+1;
+k=tl; if(k>8){ k=8; }
+j=0; while(j<k){ if(tp+j<src_len){ eb[i]=src_buf[tp+j]; i=i+1; } j=j+1; }
+eb[i]=0; }
+void se(){ ml(); print_err(eb); exit(2); }
+void ie(){ ml(); print_err(eb); exit(1); }
+void nx(){ int c;
+while(pos<src_len){ c=src_buf[pos];
+ if(c==' '||c==9||c==10||c==13){ pos=pos+1; } else { break; } }
+if(pos>=src_len){ tk=T_END; tv=0; tp=pos; tl=0; return; }
+tp=pos; c=src_buf[pos];
+if(c>='0'&&c<='9'){ tk=T_NUM; tv=0; tl=0;
+ while(pos<src_len){ c=src_buf[pos]; if(c<'0'||c>'9'){ break; } c=c-'0';
+  if(tv>214748364){ tv=2147483647; } else if(tv<214748364){ tv=tv*10+c; }
+  else { if(c>7){ tv=2147483647; } else { tv=tv*10+c; } }
+  pos=pos+1; tl=tl+1; }
+ if(tv<0){ tv=2147483647; }
+ return; }
+tl=1;
+if(c=='+'){ tk=T_PLUS; pos=pos+1; return; }
+if(c=='-'){ tk=T_MINUS; pos=pos+1; return; }
+if(c=='*'){ tk=T_STAR; pos=pos+1; return; }
+if(c=='/'){ tk=T_SLASH; pos=pos+1; return; }
+if(c=='('){ tk=T_LPAREN; pos=pos+1; return; }
+if(c==')'){ tk=T_RPAREN; pos=pos+1; return; }
+tk=T_NUM; ie(); }
+void em_p(int v){ print_str("    pushl $"); print_int(v); print_str("\n"); }
+void em_n(){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
+void em_o(int t){
+if(t==T_PLUS){ print_str("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); } if(t==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); } }
+int pr(int t){ if(t==T_UN){ return 3; } if(t==T_STAR){ return 2; } if(t==T_SLASH){ return 2; } return 1; }
+void px(){ nx();
+while(tk!=T_END){
+ if(tk==T_NUM){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
+ else if(tk==T_LPAREN){ if(aw==0){ se(); }
+  if(opn>=40){ se(); } oq[opn]=T_LPAREN; opn=opn+1; aw=1; nx(); }
+ else if(tk==T_RPAREN){ if(aw==1){ se(); }
+  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_o(oq[opn]); }
+  if(opn>0){ opn=opn-1; } else { se(); }
+  aw=0; nx(); }
+ else if(tk==T_PLUS||tk==T_MINUS){
+  if(aw==1){ if(tk==T_MINUS){ if(opn>=40){ se(); } oq[opn]=T_UN; opn=opn+1; nx(); } else { se(); } }
+  else {
+   while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_o(oq[opn]); }
+   if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); } }
+ else if(tk==T_STAR||tk==T_SLASH){
+  if(aw==1){ se(); }
+  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=2){ opn=opn-1; em_o(oq[opn]); } else { break; } }
+  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
+ else { se(); } }
+if(aw==1){ se(); }
+while(opn>0){ if(oq[opn-1]==T_LPAREN){ se(); } opn=opn-1; em_o(oq[opn]); } }
+void eh(){ print_str(".section .text\n.globl _start\n_start:\n"); }
+void et(){ print_str("    popl %eax\n    call print_decimal\n    movl $10, %eax\n    call print_char\n    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n\nprint_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n"); print_str("    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpd_loop:\n"); print_str("    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n"); print_str("    leal runt_buf+15, %edx\n    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\nprint_char:\n"); print_str("    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    leal runt_cbuf, %ecx\n    movb %al, (%ecx)\n    movl $1, %edx\n    movl $1, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edx\n    popl %ecx\n    popl %ebx\n    popl %eax\n    ret\n"); print_str("\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n"); }
+int main(){ pos=0; aw=1; opn=0; eh(); px(); if(tk!=T_END){ se(); } et(); return 0; }

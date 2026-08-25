@@ -79,6 +79,14 @@
 #      全局 int 标量初值原用 %eax 跨 emit_template/app_str 携带 → 被破坏，.data 输出
 #      `.long 残值`（如 =0 变 .long 32）→ 改 %ebx 携带（app_str/emit_template 不破坏 %ebx），
 #      并补 int 标量初值回归用例（pg_quiet=0/1 依赖此路径）。
+#   D15 B2a 自举期发现并修复 v4 潜伏缺陷：函数调用实参边界扫描（.Lpc_scan_loop）原不跳过
+#      注释/引号字符区 → 字符串实参内含 ','（如 print_str("...%ecx, %eax...")）被误判为实参
+#      分隔符 → 回放解析拦腰重扫碎串（裸 % / \ 报错 exit 1）。修复：仿 is_assign_ahead 增加
+#      引号（含 \X 转义）与 /* */ 注释跳过。回归：run.sh 增字符串带逗号实参用例。
+#   E1 B2a 前置：源码读入上限 4096→65536（boot0.pgc 本体 >4KB，B2 自举必需；in_buf 扩容）。
+#
+# 引擎限制登记（B2a 实测）：字符串字面量解码后 ≤255 字节（str_tab 每条 256B，`cmpl $255,%edx;
+#   jge Lsyn_err`），超出报"未闭合"；boot0 模板须按此分块（见 boot0.pgc et()）。
 #
 # 寄存器约定（同前，硬性）：%esi=输入游标（内部 helper 自存自取）；%edi 跨 app_* 调用安全；
 #   lval_mode / cur_tbase·cur_tptr·cur_anum·cur_lval 为表达式结果/左值性全局状态；
@@ -264,7 +272,7 @@ s_runtime:  .asciz "f_print_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl 
 
 # ---- 编译器自身工作内存（.bss） ----
 .section .bss
-in_buf:      .space 4097
+in_buf:      .space 65537        # B2 前置：源码读入上限 4096→65536（boot0.pgc 超 4KB）
 input_start: .long 0
 tok_kind:    .long 0
 tok_ival:    .long 0
@@ -343,7 +351,7 @@ _start:
     movl $3, %eax
     xorl %ebx, %ebx
     leal in_buf, %ecx
-    movl $4096, %edx
+    movl $65536, %edx
     int $0x80
     testl %eax, %eax
     js .Lrd_bad
@@ -2739,7 +2747,7 @@ parse_primary:
     jmp .Lpc_sc_adv
 .Lpc_sc2:
     cmpb $',', %al
-    jne .Lpc_sc_adv
+    jne .Lpc_sc3
     movl scan_depth, %eax
     testl %eax, %eax
     jnz .Lpc_sc_adv
@@ -2750,6 +2758,51 @@ parse_primary:
     incl scan_idx
     incl arg_count
     jmp .Lpc_sc_adv
+    # D15（B2a 自举发现）：实参边界扫描须跳过注释/引号字符区——否则字符串实参内的
+    #   ',' 被误判为实参分隔符，回放解析把字符串拦腰重扫（裸 % / \ 报错，exit 1）。
+.Lpc_sc3:
+    cmpb $'/', %al
+    jne .Lpc_sc_q1
+    cmpb $'*', 1(%esi)
+    jne .Lpc_sc_q1
+    addl $2, %esi              # 注释 /* ... */：跳到 '*/'
+.Lpc_sc_comm:
+    movzbl (%esi), %eax
+    testl %eax, %eax
+    jz Lsyn_err
+    cmpb $'*', %al
+    jne .Lpc_sc_comm_adv
+    cmpb $'/', 1(%esi)
+    jne .Lpc_sc_comm_adv
+    addl $2, %esi
+    jmp .Lpc_scan_loop
+.Lpc_sc_comm_adv:
+    incl %esi
+    jmp .Lpc_sc_comm
+.Lpc_sc_q1:
+    cmpb $'\'', %al
+    je .Lpc_sc_q
+    cmpb $'"', %al
+    je .Lpc_sc_q
+    jmp .Lpc_sc_adv
+.Lpc_sc_q:                    # 引号字符区：跳过到同名闭引号（处理 \X 转义，同 is_assign_ahead）
+    incl %esi
+.Lpc_sc_qloop:
+    movzbl (%esi), %ecx
+    testl %ecx, %ecx
+    jz Lsyn_err
+    cmpb $'\\', %cl
+    jne .Lpc_sc_qn
+    addl $2, %esi
+    jmp .Lpc_sc_qloop
+.Lpc_sc_qn:
+    cmpb %al, %cl
+    je .Lpc_sc_qend
+    incl %esi
+    jmp .Lpc_sc_qloop
+.Lpc_sc_qend:
+    incl %esi
+    jmp .Lpc_scan_loop
 .Lpc_sc_adv:
     incl %esi
     jmp .Lpc_scan_loop

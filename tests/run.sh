@@ -212,6 +212,11 @@ run_stderr "int main(){ print_err(\"oops\"); return 7; }" "7" "oops"
 run_stderr "int main(){ print_err(\"bad\"); print_err(\"worse\"); return 0; }" "0" "bad
 worse"
 
+# ---- u. D15 回归（B2a 发现）：字符串实参内含 ',' 不可被误判为实参分隔符 ----
+run_case "int main(){ print_str(\"a,b\"); return 1; }" "a,b1"
+run_case "int main(){ int t; t=1; if(t==1){ print_str(\"x,y\"); } return 5; }" "x,y5"
+run_case "void f(){ print_str(\"p,q\"); } int main(){ f(); return 7; }" "p,q7"
+
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"
 [ "$FAIL" -eq 0 ]
