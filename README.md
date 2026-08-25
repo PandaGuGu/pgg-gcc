@@ -46,7 +46,7 @@
 |------|------|------|
 | v0（P0） | ✅ v0 完成（10/10 自证通过） | 词法 + 整数四则表达式 → 汇编输出（无蛋汇编引导；细则见 [plan §4.0](docs/design/plan-language-features.md)） |
 | v1（P1） | ✅ v1 完成（10/10 自证通过） | 变量声明与赋值（stdin 程序文本；`int` 声明、`=` 链式赋值、符号表、栈帧局部变量、末语句值打印；细则见 plan §4.1） |
-| v2（P2） | 📋 细则已定 | 函数定义与调用（main 入口、cdecl 约定；细则见 plan §4.2） |
+| v2（P2） | ✅ v2 完成（11/11 自证通过） | 函数定义与调用（`int` 函数/参数表/`return`；cdecl 实参从右到左压栈；`main` 入口打印返回值；函数级作用域；细则见 plan §4.2） |
 | v3（P3） | 📋 细则已定 | 控制流：if/while/for、比较、块作用域（细则见 plan §4.3） |
 | v4（P4） | 📋 待定 | 类型系统补全：指针/数组/struct/union/enum/typedef/const·volatile → C90 全量（plan §5） |
 | v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集） |
@@ -68,10 +68,10 @@ pgg-gcc/
 ## 构建
 
 ```bash
-# v1 版本（无蛋引导：手写汇编 stage-1，不调用任何 C/C++ 编译器；变量声明与赋值，2026-08-25 完成）
-as --32 -o build/pggcc1.o src/pggcc1.s
-ld -m elf_i386 -o build/pggcc1 build/pggcc1.o
-echo "int a; a=5; a+1;" | ./build/pggcc1
+# v2 版本（无蛋引导：手写汇编 stage-2，不调用任何 C/C++ 编译器；函数定义与调用，2026-08-25 完成）
+as --32 -o build/pggcc2.o src/pggcc2.s
+ld -m elf_i386 -o build/pggcc2 build/pggcc2.o
+echo "int add(int a, int b) { return a+b; } int main() { return add(2,3); }" | ./build/pggcc2
 ```
 
 自证测试（WSL 内运行，不调用任何 C/C++ 编译器做行为对照）：
