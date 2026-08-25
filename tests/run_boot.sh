@@ -1,5 +1,5 @@
 #!/bin/bash
-# B2d 自举第四步自证：pggcc4（自研 stage-4）编译 src/boot0.pgc -> bin0（B2d 面：比较算子/if-else/while/for/递归）
+# B2e 自举第五步自证：pggcc4（自研 stage-4）编译 src/boot0.pgc -> bin0（B2e 面：+块作用域；比较/if-else/while/for/递归）
 #   bin0 读入 v3 程序文本（stdin，函数序列，入口 main 返回其返回值）-> 输出 .s -> as --32 -> ld -m elf_i386 -> 运行比对
 # 全程无任何 C/C++ 编译器参与（as/ld 为项目地板层机械工具，无编译语义）。
 # 协议（v3，architecture-b2-bootstrap §4）：程序=函数定义序列；main 返回值打印；错误 exit 2（缺 main/未定义/重定义/语法）。
@@ -114,6 +114,14 @@ run_case "int fact(int n){ if(n<=1){ return 1; } return n*fact(n-1); } int main(
 run_case "int fact(int n){ if(n<=1){ return 1; } return n*fact(n-1); } int main(){ return fact(10); }" 3628800
 run_case "int fib(int n){ if(n<2){ return n; } return fib(n-1)+fib(n-2); } int main(){ return fib(7); }" 13
 
+echo "== v3/B2e：块作用域（内层遮蔽外层 / 出块符号表弹回 + addl 栈回收 / 槽位复用） =="
+run_case "int main(){ int a; a=1; { int a; a=2; } return a; }" 1
+run_case "int main(){ int a; a=1; { int a; a=a+5; return a; } }" 6
+run_case "int main(){ int a; a=1; { int a; a=2; { int a; a=3; return a; } } }" 3
+run_case "int main(){ int s; s=0; while(0){ int x; x=1; s=s+x; } return s; }" 0
+run_case "int main(){ int a; a=0; { int b; b=1; int c; c=2; return b*10+c; } }" 12
+run_case "int main(){ int a; a=3; { int b; b=4; } int c; c=a+1; return c; }" 4
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
@@ -124,6 +132,10 @@ run_err "int main(){ return 1 }" 2
 echo "== v3/B2d 错误用例（缺括号/非法算子） =="
 run_err "int main(){ int i; for(i=0;i<3;{ i=i+1; } }" 2
 run_err "int main(){ return 2&&3; }" 1
+
+echo "== v3/B2e 错误用例（同作用域重声明：同块 / 参数·函数体顶层） =="
+run_err "int main(){ int a; int a; return 0; }" 2
+run_err "int f(int a){ int a; return a; } int main(){ return 0; }" 2
 
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"

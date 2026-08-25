@@ -1,12 +1,14 @@
-/* boot0.pgc B2d self-host step4: read v3 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
-   face: + comparison ops == != < <= > >= (setCC) / if-else else-if / while / for (scan-replay inc) /
+/* boot0.pgc B2e self-host step5: read v3 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
+   face: + block scope ({} shadow outer, pop-back + addl $4k stack reclaim, per-function sc reset) /
+   comparison ops == != < <= > >= (setCC) / if-else else-if / while / for (scan-replay inc) /
    return / calls / decl-assign (v1-v2 carried); L%d jump labels; self-recursive p_s stmt parser
    (blocks/control flow inlined, no mutual recursion); main() return printed.
    workarounds kept: nested-if lexer (pggcc4 >=3-way || defect), fi sentinel s==-1, one-arg scan init,
    ast-stack saves argp/endp for nested calls, ar depth counter, driver loops keep if inside helpers (D16),
    ns semicolon-strictness flag (if/while/for/block skip ';' requirement, else/return/decl strict),
-   for-loop incf empty-inc + body-token save/restore (bpos/btk/btp/btl) for inc-after-body replay.
-   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.3/6.6 */
+   for-loop incf empty-inc + body-token save/restore (bpos/btk/btp/btl) for inc-after-body replay,
+   fi reverse search (shadow wins), bstk/blok block-base stack, pd same-scope collision check only.
+   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.2.1/6.3/6.6 */
 int pg_quiet=1;
 char src_buf[4096];
 int src_len;
@@ -26,6 +28,9 @@ int mn;
 int lc;
 int la;
 int locn;
+int bstk[16];
+int blok[16];
+int bd;
 int argp[16];
 int endp;
 int ar;
@@ -42,10 +47,11 @@ eb[i]=0; }
 void se(){ ml(); print_err(eb); exit(2); }
 void ie(){ ml(); print_err(eb); exit(1); }
 int fi(){ int i,j;
-i=0; while(i<sc){
+i=sc-1;
+while(i>=0){
  j=0; while(j<tl){ if(sn[i*16+j]!=nm[j]){ break; } j=j+1; }
  if(j==tl){ if(sn[i*16+j]==0){ return so[i]; } }
- i=i+1; }
+ i=i-1; }
 return -1; }
 int fnfind(){ int i,j;
 i=0; while(i<fsc){
@@ -201,11 +207,15 @@ if(tk==T_ID){
 } else {
  p_cmp();
 } }
-void pd(){ int j;
+void pd(){ int j; int i;
 nx();
 while(1){
  if(tk!=T_ID){ se(); }
- if(fi()!=-1){ se(); }
+ i=sc-1;
+ while(i>=bstk[bd]){
+  j=0; while(j<tl){ if(sn[i*16+j]!=nm[j]){ break; } j=j+1; }
+  if(j==tl){ if(sn[i*16+j]==0){ se(); } }
+  i=i-1; }
  if(sc>=32){ se(); }
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
  so[sc]=0-((locn+1)*4);
@@ -224,9 +234,15 @@ void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp;
 aw=1; opn=0;
 if(tk==T_INT){ ns=0; pd(); }
 else if(tk==T_RETURN){ ns=0; p_k(); }
-else if(tk==T_LBRACE){ ns=1; nx();
+else if(tk==T_LBRACE){ ns=1;
+ bd=bd+1; if(bd>=16){ se(); }
+ bstk[bd]=sc; blok[bd]=locn;
+ nx();
  while(tk!=T_RBRACE){ p_s(); }
- if(tk!=T_RBRACE){ se(); } nx(); }
+ if(tk!=T_RBRACE){ se(); }
+ if(sc>bstk[bd]){ print_str("    addl $"); print_int((sc-bstk[bd])*4); print_str(", %esp\n"); }
+ sc=bstk[bd]; locn=blok[bd]; bd=bd-1;
+ nx(); }
 else if(tk==T_IF){ ns=1; nx();
  if(tk!=T_LPAREN){ se(); } nx();
  cr=cr+1; p_cmp(); cr=cr-1;
@@ -293,6 +309,7 @@ print_str("f"); print_int(fsc); print_str(":\n");
 print_str("    pushl %ebp\n    movl %esp, %ebp\n");
 la=lc; lc=lc+1;
 fsc=fsc+1;
+sc=0;
 nx();
 if(tk!=T_LPAREN){ se(); }
 nx();
@@ -311,6 +328,7 @@ if(tk!=T_RPAREN){ se(); }
 nx();
 if(tk!=T_LBRACE){ se(); }
 nx();
+bstk[0]=0; blok[0]=0; bd=0;
 locn=0;
 floop();
 if(tk!=T_RBRACE){ se(); }
@@ -336,7 +354,7 @@ print_str("    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    l
 print_str("\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
 }
 void et(){ }
-int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; cr=0; astp=0;
+int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; cr=0; astp=0; bd=0;
 nx();
 ptop();
 if(mn<0){ se(); }
