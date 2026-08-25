@@ -59,6 +59,26 @@
 #   D8 子集限制登记：函数须"先定义后调用"（无处前向声明/隐式声明）；char 常量初值 '\0'（NUL
 #      字面量）被 .Lns_char 的返回值 0 检查拒绝；字符串初值超数组长按截断处理（C89 要求报错，
 #      本阶段登记为不报错限制）。
+#   D9–D12 = B2-P0（v4.1 模板扩展，2026-08-25，见 docs/logs 会话 11；方案 architecture-b2-bootstrap §3）
+#   D9 内建扩展（S1）：print_int / print_err / exit 入内建函数表（均 void，cdecl 从调用栈取参），
+#      运行时模板 s_runtime 增 f_print_int（十进制不带换行）/ f_print_err（fd2＋换行）/ f_exit
+#      （sys_exit，实参→%ebx）；保留名同 print_str 先例（用户重定义同名 → 错误）。
+#   D10 stdin 预读（S2）：源程序声明全局 src_buf 与 src_len → _start 在 call f_main 前
+#      read(0, g_src_buf, N)（N = src_buf 声明长度 anum），字节数存 g_src_len，读失败置 0；
+#      未同时声明两者则不发预读（零开销）。判定依据 parse 后的 gs_* 全局符号表。
+#   D11 rc 打印开关（S3）：源程序声明全局 pg_quiet 且非 0 → 跳过 return 值打印（供编译器类
+#      程序以 stdout 输出产物）；未声明则维持"打印返回值"语义。
+#   D12 发码顺序调整：_start 原在解析前输出 s_head_start/s_main_epi → 移至 parse_top 之后
+#      （emit_prog_head/emit_prog_epi），使 D10/D11 的条件判定可依赖 gs_*；安全依据：
+#      as 默认 .text 起步，函数体初始即落 .text，全局/字符串段切出后均显式切回 .text，
+#      s_head_start 自带 .section .text，故 _start 码段始终正确落段。
+#   D13 out_line 溢出加固：s_runtime 超长（v4.1 增助手后 >128B），原 emit_template 一次性
+#      app_str 逐字符写 out_line(128B) 越过 .bss 末端 → 段错误 → 改分块发码 emit_runtime
+#      （每 ~100 字符刷一行，字节流不变）。
+#   D14 B2-P0 期发现并修复 v4 遗留死角（v4 全局无 int 标量初值用例，未覆盖）：.Lpg_long
+#      全局 int 标量初值原用 %eax 跨 emit_template/app_str 携带 → 被破坏，.data 输出
+#      `.long 残值`（如 =0 变 .long 32）→ 改 %ebx 携带（app_str/emit_template 不破坏 %ebx），
+#      并补 int 标量初值回归用例（pg_quiet=0/1 依赖此路径）。
 #
 # 寄存器约定（同前，硬性）：%esi=输入游标（内部 helper 自存自取）；%edi 跨 app_* 调用安全；
 #   lval_mode / cur_tbase·cur_tptr·cur_anum·cur_lval 为表达式结果/左值性全局状态；
@@ -131,10 +151,29 @@ s_main_name:.asciz "main"
 bi_print_dec: .asciz "print_decimal"
 bi_print_char:.asciz "print_char"
 bi_print_str: .asciz "print_str"
+bi_print_int: .asciz "print_int"
+bi_print_err: .asciz "print_err"
+bi_exit:      .asciz "exit"
+
+# ---- B2-P0（v4.1）保留全局判定的字面名 ----
+lit_src_buf:  .asciz "src_buf"
+lit_src_len:  .asciz "src_len"
+lit_pg_quiet: .asciz "pg_quiet"
 
 # ---- 生成程序（.s）固定文本模板 ----
-s_head_start: .asciz ".section .text\n.globl _start\n_start:\n    call f_main\n"
+s_head_start: .asciz ".section .text\n.globl _start\n_start:\n"    # _start 无条件部分
+s_head_callmain: .asciz "    call f_main\n"
 s_main_epi:   .asciz "    call f_print_decimal\n    movl $10, %eax\n    call f_print_char\n    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n"
+# S2 stdin 预读（条件发码，src_buf 与 src_len 均存在时）：
+#   read(0, g_src_buf, N) → g_src_len（N = src_buf 声明长度 anum）
+s_rd_a:       .asciz "    movl $3, %eax\n    xorl %ebx, %ebx\n    leal "
+s_rd_b:       .asciz ", %ecx\n    movl $"
+s_rd_c:       .asciz ", %edx\n    int $0x80\n    movl %eax, "
+s_rd_d:       .asciz "\n    testl %eax, %eax\n    jns Lrds_ok\n    movl $0, "
+s_rd_e:       .asciz "\nLrds_ok:\n"
+# S3 rc 打印开关（条件发码，pg_quiet 存在时）：pg_quiet != 0 → 跳过 return 打印
+s_q_pre:      .asciz "    cmpl $0, "
+s_q_tail:     .asciz "\n    jnz Lq_rc\n    call f_print_decimal\n    movl $10, %eax\n    call f_print_char\nLq_rc:\n    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n"
 s_push_pre:   .asciz "    pushl $"
 op_add:       .asciz "    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"
 op_sub:       .asciz "    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"
@@ -221,7 +260,7 @@ s_scale_mid2: .asciz ", %eax, %eax\n"
 s_ret_char:   .asciz "    popl %eax\n    movzbl %al, %eax\n"
 
 # ---- 生成程序运行时助手 + .bss（f_* 前缀以支持用户直接调用；print_str 为新增）----
-s_runtime:  .asciz "f_print_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call f_print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpd_loop:\n    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n    leal runt_buf+15, %edx\n    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\nf_print_char:\n    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    leal runt_cbuf, %ecx\n    movb %al, (%ecx)\n    movl $1, %edx\n    movl $1, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edx\n    popl %ecx\n    popl %ebx\n    popl %eax\n    ret\n\nf_print_str:\n    pushl %ebp\n    movl %esp, %ebp\n    pushl %esi\n    pushl %edi\n    movl 8(%ebp), %esi\n.Lps_len:\n    cmpb $0, (%esi)\n    je .Lps_got\n    incl %esi\n    jmp .Lps_len\n.Lps_got:\n    movl %esi, %edi\n    subl 8(%ebp), %edi\n    movl %edi, %edx\n    movl 8(%ebp), %ecx\n    movl $1, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edi\n    popl %esi\n    movl %ebp, %esp\n    popl %ebp\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n"
+s_runtime:  .asciz "f_print_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call f_print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpd_loop:\n    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n    leal runt_buf+15, %edx\n    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\nf_print_char:\n    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    leal runt_cbuf, %ecx\n    movb %al, (%ecx)\n    movl $1, %edx\n    movl $1, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edx\n    popl %ecx\n    popl %ebx\n    popl %eax\n    ret\n\nf_print_str:\n    pushl %ebp\n    movl %esp, %ebp\n    pushl %esi\n    pushl %edi\n    movl 8(%ebp), %esi\n.Lps_len:\n    cmpb $0, (%esi)\n    je .Lps_got\n    incl %esi\n    jmp .Lps_len\n.Lps_got:\n    movl %esi, %edi\n    subl 8(%ebp), %edi\n    movl %edi, %edx\n    movl 8(%ebp), %ecx\n    movl $1, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edi\n    popl %esi\n    movl %ebp, %esp\n    popl %ebp\n    ret\n\nf_exit:\n    pushl %ebp\n    movl %esp, %ebp\n    movl 8(%ebp), %ebx\n    movl $1, %eax\n    int $0x80\n\nf_print_int:\n    pushl %ebp\n    movl %esp, %ebp\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n    movl 8(%ebp), %eax\n    test %eax, %eax\n    jns .Lpi_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call f_print_char\n    movl %esi, %eax\n    negl %eax\n.Lpi_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpi_loop:\n    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpi_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n    leal runt_buf+15, %edx\n    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    movl %ebp, %esp\n    popl %ebp\n    ret\n\nf_print_err:\n    pushl %ebp\n    movl %esp, %ebp\n    pushl %esi\n    pushl %edi\n    movl 8(%ebp), %esi\n.Lpe_len:\n    cmpb $0, (%esi)\n    je .Lpe_got\n    incl %esi\n    jmp .Lpe_len\n.Lpe_got:\n    movl %esi, %edi\n    subl 8(%ebp), %edi\n    movl %edi, %edx\n    movl 8(%ebp), %ecx\n    movl $2, %ebx\n    movl $4, %eax\n    int $0x80\n    leal runt_cbuf, %ecx\n    movb $10, (%ecx)\n    movl $1, %edx\n    movl $2, %ebx\n    movl $4, %eax\n    int $0x80\n    popl %edi\n    popl %esi\n    movl %ebp, %esp\n    popl %ebp\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n"
 
 # ---- 编译器自身工作内存（.bss） ----
 .section .bss
@@ -315,19 +354,19 @@ _start:
     leal in_buf, %esi
     movl %esi, input_start
     movb $0, in_buf(%eax)
-    # 预注入运行时内建函数（f_print_decimal / f_print_char / f_print_str，返回 void）
+    # 预注入运行时内建函数（f_print_decimal / f_print_char / f_print_str / f_print_int /
+    #                    f_print_err / f_exit，均返回 void）
     call builtin_reg
-    leal s_head_start, %ecx
-    call emit_template
-    leal s_main_epi, %ecx
-    call emit_template
     call next_token
     call parse_top            # func* | global-decl*
     call func_has_main
     testl %eax, %eax
     jz Lsyn_err
-    leal s_runtime, %ecx
-    call emit_template
+    # B2-P0（v4.1）：头部/尾部发码移至此——须等全局声明解析完成，才能按 gs_* 判定
+    #   保留全局 src_buf/src_len（S2 stdin 预读）与 pg_quiet（S3 rc 打印开关）。
+    call emit_prog_head       # .section .text/_start + 条件 stdin 预读 + call f_main
+    call emit_prog_epi        # rc 打印（pg_quiet 条件跳过）+ exit
+    call emit_runtime         # s_runtime 超长，分块发码（防 out_line 溢出）
     xorl %ebx, %ebx
     movl $1, %eax
     int $0x80
@@ -417,12 +456,19 @@ parse_top:
     ret
 
 # builtin_reg: 把运行时助手注进函数表（name, tbase=T_VOID, tptr=0）
+#   v4.1（B2-P0 S1）新增 print_int / print_err / exit（均返回 void；cdecl 从调用栈取参）
 builtin_reg:
     leal bi_print_dec, %ecx
     call builtin_add
     leal bi_print_char, %ecx
     call builtin_add
     leal bi_print_str, %ecx
+    call builtin_add
+    leal bi_print_int, %ecx
+    call builtin_add
+    leal bi_print_err, %ecx
+    call builtin_add
+    leal bi_exit, %ecx
     call builtin_add
     ret
 builtin_add:            # %ecx = 名字符串地址
@@ -986,14 +1032,13 @@ parse_global_decl:
     call next_token          # 消费初值 token（标量路径此前漏消费）
     jmp .Lpg_data_done
 .Lpg_long:
-    popl %eax
+    popl %ebx                  # 初值携 %ebx（emit_template/app_str 破坏 %eax，不破坏 %ebx；D14）
     leal s_al4, %ecx
     call emit_template
     leal s_gd_long, %ecx
     call app_str
-    pushl %eax
+    movl %ebx, %eax
     call app_dec
-    addl $4, %esp
     leal s_nl, %ecx
     call app_str
     call emit_line
@@ -3872,6 +3917,154 @@ commit_peek:
     ret
 
 # ================= 代码生成助手 =================
+# gs_find_lit: %ecx = 字面名地址 → 拷入 scratch_name 后 gs_find → %eax = 索引 / -1
+gs_find_lit:
+    pushl %esi
+    pushl %edi
+    movl %ecx, %esi
+    leal scratch_name, %edi
+    xorl %edx, %edx
+.Lgfl_copy:
+    cmpl $MAX_NAMELEN, %edx
+    jge .Lgfl_copyd
+    movb (%esi,%edx), %al
+    movb %al, (%edi,%edx)
+    testb %al, %al
+    jz .Lgfl_copyd
+    incl %edx
+    jmp .Lgfl_copy
+.Lgfl_copyd:
+    movb $0, (%edi,%edx)
+    call gs_find              # %eax = idx / -1（gs_find 自存自取 %esi，不破坏 %ebx）
+    popl %edi
+    popl %esi
+    ret
+
+# emit_prog_head: 输出生成程序头部
+#   ".section .text/.globl _start/_start:" + [S2 条件 stdin 预读] + "call f_main"
+emit_prog_head:
+    pushl %ebx
+    pushl %ecx
+    pushl %edx
+    pushl %esi
+    pushl %edi
+    leal s_head_start, %ecx
+    call emit_template
+    # S2：src_buf 与 src_len 均存在 → 发预读（%ebx = src_buf 索引，%edi = src_len 索引）
+    leal lit_src_buf, %ecx
+    call gs_find_lit
+    movl %eax, %ebx
+    testl %eax, %eax
+    js .Leph_call
+    leal lit_src_len, %ecx
+    call gs_find_lit
+    movl %eax, %edi
+    testl %eax, %eax
+    js .Leph_call
+    # read(0, g_src_buf, N) → g_src_len；N = gs_anum(src_buf)
+    leal s_rd_a, %ecx
+    call app_str
+    leal s_gname_pre, %ecx
+    call app_str
+    movl %ebx, %ecx
+    shll $4, %ecx
+    leal gs_name(%ecx), %ecx
+    call app_str                     # "g_src_buf"
+    leal s_rd_b, %ecx
+    call app_str
+    movl %ebx, %ecx
+    movl gs_anum(,%ecx,4), %eax
+    call app_dec                     # N（dec_to_str 破坏 %ebx，此后不再用 src_buf 索引）
+    leal s_rd_c, %ecx
+    call app_str
+    leal s_gname_pre, %ecx
+    call app_str
+    movl %edi, %ecx
+    shll $4, %ecx
+    leal gs_name(%ecx), %ecx
+    call app_str                     # "g_src_len"（movl %eax 目标）
+    leal s_rd_d, %ecx
+    call app_str
+    leal s_gname_pre, %ecx
+    call app_str
+    movl %edi, %ecx
+    shll $4, %ecx
+    leal gs_name(%ecx), %ecx
+    call app_str                     # "g_src_len"（失败归零目标）
+    leal s_rd_e, %ecx
+    call app_str
+    call emit_line
+.Leph_call:
+    leal s_head_callmain, %ecx
+    call emit_template
+    popl %edi
+    popl %esi
+    popl %edx
+    popl %ecx
+    popl %ebx
+    ret
+
+# emit_prog_epi: 输出生成程序尾部（rc 打印 + exit；pg_quiet 存在时条件跳过打印）
+emit_prog_epi:
+    pushl %ebx
+    pushl %ecx
+    pushl %edx
+    pushl %esi
+    pushl %edi
+    leal lit_pg_quiet, %ecx
+    call gs_find_lit
+    movl %eax, %ebx              # %ebx = pg_quiet 索引（app_str 内部用 %eax，须先落槽）
+    testl %eax, %eax
+    js .Lpepi_normal
+    # pg_quiet 存在 → cmpl $0, g_pg_quiet / jnz Lq_rc / 打印 / Lq_rc: / exit
+    leal s_q_pre, %ecx
+    call app_str
+    leal s_gname_pre, %ecx
+    call app_str
+    movl %ebx, %ecx
+    shll $4, %ecx
+    leal gs_name(%ecx), %ecx
+    call app_str                     # "g_pg_quiet"
+    leal s_q_tail, %ecx
+    call app_str
+    call emit_line
+    jmp .Lpepi_done
+.Lpepi_normal:
+    leal s_main_epi, %ecx
+    call emit_template
+.Lpepi_done:
+    popl %edi
+    popl %esi
+    popl %edx
+    popl %ecx
+    popl %ebx
+    ret
+
+# emit_runtime: 输出 s_runtime（超长，>128B）——分块刷行，防止 app_str 逐字符
+#   写入 out_line(128B) 溢出越过 .bss 末端（v4.1 加助手后触发，D13）
+emit_runtime:
+    pushl %esi
+    pushl %ecx
+    pushl %edx
+    leal s_runtime, %esi
+.Lrth_loop:
+    movzbl (%esi), %eax
+    test %eax, %eax
+    jz .Lrth_done
+    cmpl $100, out_len
+    jl .Lrth_put
+    call emit_line
+.Lrth_put:
+    call app_char
+    incl %esi
+    jmp .Lrth_loop
+.Lrth_done:
+    call emit_line
+    popl %edx
+    popl %ecx
+    popl %esi
+    ret
+
 emit_push_imm:
     leal s_push_pre, %ecx
     call app_str

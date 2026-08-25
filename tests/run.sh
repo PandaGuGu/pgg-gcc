@@ -52,6 +52,63 @@ run_err() {    # 错误用例：断言编译失败且退出码=2
         FAIL=$((FAIL+1))
     fi
 }
+run_exit() {   # 运行时退出码断言（v4.1：exit 内建）
+    local prog="$1" expect="$2"
+    if ! printf '%s' "$prog" | timeout 5 ./build/pggcc4 > /tmp/pg4x.s 2>/tmp/pg4x_err.txt; then
+        echo "FAIL [$prog]: 编译失败: $(cat /tmp/pg4x_err.txt)"; FAIL=$((FAIL+1)); return
+    fi
+    if ! as --32 -o /tmp/pg4x.o /tmp/pg4x.s 2>>/tmp/pg4x_err.txt; then
+        echo "FAIL [$prog]: 汇编失败"; FAIL=$((FAIL+1)); return
+    fi
+    if ! ld -m elf_i386 -o /tmp/pg4x.out /tmp/pg4x.o 2>>/tmp/pg4x_err.txt; then
+        echo "FAIL [$prog]: 链接失败"; FAIL=$((FAIL+1)); return
+    fi
+    local rc
+    timeout 5 /tmp/pg4x.out > /dev/null 2>/dev/null
+    rc=$?
+    if [ "$rc" = "$expect" ]; then
+        PASS=$((PASS+1)); echo "PASS [$prog] -> exit $rc"
+    else
+        echo "FAIL [$prog]: 退出码 期望 $expect 得 $rc"; FAIL=$((FAIL+1))
+    fi
+}
+run_stdin() {  # 以 stdin 喂生成程序后比对 stdout（v4.1：src_buf/src_len 预读）
+    local prog="$1" input="$2" expect="$3"
+    if ! printf '%s' "$prog" | timeout 5 ./build/pggcc4 > /tmp/pg4s.s 2>/tmp/pg4s_err.txt; then
+        echo "FAIL [$prog]: 编译失败: $(cat /tmp/pg4s_err.txt)"; FAIL=$((FAIL+1)); return
+    fi
+    if ! as --32 -o /tmp/pg4s.o /tmp/pg4s.s 2>>/tmp/pg4s_err.txt; then
+        echo "FAIL [$prog]: 汇编失败"; FAIL=$((FAIL+1)); return
+    fi
+    if ! ld -m elf_i386 -o /tmp/pg4s.out /tmp/pg4s.o 2>>/tmp/pg4s_err.txt; then
+        echo "FAIL [$prog]: 链接失败"; FAIL=$((FAIL+1)); return
+    fi
+    local got
+    got=$(printf '%s' "$input" | timeout 5 /tmp/pg4s.out)
+    if [ "$got" = "$expect" ]; then
+        PASS=$((PASS+1)); echo "PASS [$prog] (stdin=\"$input\") = $got"
+    else
+        echo "FAIL [$prog]: stdin=\"$input\" 期望 $expect 得 $got"; FAIL=$((FAIL+1))
+    fi
+}
+run_stderr() { # 断言 stdout 与 stderr 内容（v4.1：print_err 走 fd2）
+    local prog="$1" out_expect="$2" err_expect="$3"
+    if ! printf '%s' "$prog" | timeout 5 ./build/pggcc4 > /tmp/pg4e.s 2>/tmp/pg4e_err.txt; then
+        echo "FAIL [$prog]: 编译失败: $(cat /tmp/pg4e_err.txt)"; FAIL=$((FAIL+1)); return
+    fi
+    as --32 -o /tmp/pg4e.o /tmp/pg4e.s 2>>/tmp/pg4e_err.txt || { echo "FAIL [$prog]: 汇编失败"; FAIL=$((FAIL+1)); return; }
+    ld -m elf_i386 -o /tmp/pg4e.out /tmp/pg4e.o 2>>/tmp/pg4e_err.txt || { echo "FAIL [$prog]: 链接失败"; FAIL=$((FAIL+1)); return; }
+    local got_out got_err
+    printf '%s' "" | timeout 5 /tmp/pg4e.out > /tmp/pg4e_so.txt 2>/tmp/pg4e_se.txt
+    got_out=$(cat /tmp/pg4e_so.txt)
+    got_err=$(cat /tmp/pg4e_se.txt)
+    if [ "$got_out" = "$out_expect" ] && [ "$got_err" = "$err_expect" ]; then
+        PASS=$((PASS+1)); echo "PASS [$prog] stdout=\"$got_out\" stderr=\"$got_err\""
+    else
+        echo "FAIL [$prog]: stdout 期望 \"$out_expect\" 得 \"$got_out\"; stderr 期望 \"$err_expect\" 得 \"$got_err\""
+        FAIL=$((FAIL+1))
+    fi
+}
 
 # ---- 基线回归（v0-v3 保留路径） ----
 run_case "int main() { return 42; }" 42
@@ -112,6 +169,8 @@ run_case "int gz; int main(){ gz=7; return gz; }" 7
 run_case "char gs[5] = {'a','b',0}; int main(){ return gs[0]+gs[1]; }" 195
 run_case "char s[4] = \"hi\"; int main(){ return s[0]+s[1]; }" 209
 run_case "int gm[4] = {1,2}; int main(){ return gm[0]+gm[1]+gm[2]+gm[3]; }" 3
+run_case "int p1 = 0; int main(){ return p1; }" 0
+run_case "int p2 = 777; int main(){ return p2; }" 777
 
 # ---- 9. 强转：截断/保值/指针字节读写 ----
 run_case "int main(){ char c; int i; i=300; c=(char)i; return c; }" 44
@@ -139,6 +198,19 @@ run_err "int main(){ int *p[3]; return 0; }" 2
 run_err "int g = i; int main(){ return 0; }" 2
 run_err "int print_str(int x){ return x; } int main(){ return 0; }" 2
 run_err "int main(){ char s[3] = {1,2,3,4}; return 0; }" 2
+
+# ---- t. B2-P0 模板扩展（v4.1）：print_int / exit / print_err / pg_quiet / stdin 预读 ----
+run_case "int main(){ print_int(123); return 5; }" "1235"
+run_case "int main(){ print_int(-7); print_int(0); return 1; }" "-701"
+run_exit "int main(){ exit(3); return 0; }" 3
+run_exit "int main(){ exit(2); }" 2
+run_case "int pg_quiet=1; int main(){ return 42; }" ""
+run_case "int pg_quiet=0; int main(){ return 9; }" "9"
+run_stdin "char src_buf[16]; int src_len; int main(){ print_int(src_len); return 0; }" "hello" "50"
+run_stdin "char src_buf[16]; int src_len; int main(){ return (src_buf[0]=='a')*100 + (src_buf[1]=='b')*10 + (src_buf[2]=='c'); }" "abc" "111"
+run_stderr "int main(){ print_err(\"oops\"); return 7; }" "7" "oops"
+run_stderr "int main(){ print_err(\"bad\"); print_err(\"worse\"); return 0; }" "0" "bad
+worse"
 
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"
