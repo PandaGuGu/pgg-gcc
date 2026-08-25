@@ -1,14 +1,17 @@
-/* boot0.pgc B2c self-host step3: read v2 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
-   face: functions (int, optional int params, cdecl), return, calls (args right-to-left), local decls;
-   main() return value printed; fn labels f<idx> (no dynamic names); symtab=flat char sn + parallel int so;
-   B2b workarounds maintained: expr parser = self-recursive e_expr (no mutual recursion), nested if lexer
-   (pggcc4 >=3-way || chain defect), fi sentinel s==-1; driver loop keeps if inside helper fns (D16).
-   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.3/6.6/6.7 */
+/* boot0.pgc B2d self-host step4: read v3 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
+   face: + comparison ops == != < <= > >= (setCC) / if-else else-if / while / for (scan-replay inc) /
+   return / calls / decl-assign (v1-v2 carried); L%d jump labels; self-recursive p_s stmt parser
+   (blocks/control flow inlined, no mutual recursion); main() return printed.
+   workarounds kept: nested-if lexer (pggcc4 >=3-way || defect), fi sentinel s==-1, one-arg scan init,
+   ast-stack saves argp/endp for nested calls, ar depth counter, driver loops keep if inside helpers (D16),
+   ns semicolon-strictness flag (if/while/for/block skip ';' requirement, else/return/decl strict),
+   for-loop incf empty-inc + body-token save/restore (bpos/btk/btp/btl) for inc-after-body replay.
+   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.3/6.6 */
 int pg_quiet=1;
 char src_buf[4096];
 int src_len;
 int pos,tk,tv,tp,tl,aw,opn;
-int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16;
+int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16,T_EQ=17,T_NE=18,T_LT=19,T_LE=20,T_GT=21,T_GE=22,T_IF=23,T_ELSE=24,T_WHILE=25,T_FOR=26;
 int oq[40];
 char eb[40];
 char sn[512];
@@ -26,7 +29,8 @@ int locn;
 int argp[16];
 int endp;
 int ar;
-int ast[512];
+int cr;
+int ast[1024];
 int astp;
 int wd(int at,int n){ if(n/10!=0){ at=wd(at,n/10); } eb[at]='0'+(n-(n/10)*10); return at+1; }
 void ml(){ int i,j,k; i=0;
@@ -78,6 +82,10 @@ if(k==1){ tk=T_ID; tl=0;
  nm[tl]=0;
  if(tl==3){ if(nm[0]=='i'){ if(nm[1]=='n'){ if(nm[2]=='t'){ tk=T_INT; } } } }
  if(tl==6){ if(nm[0]=='r'){ if(nm[1]=='e'){ if(nm[2]=='t'){ if(nm[3]=='u'){ if(nm[4]=='r'){ if(nm[5]=='n'){ tk=T_RETURN; } } } } } } }
+ if(tl==2){ if(nm[0]=='i'){ if(nm[1]=='f'){ tk=T_IF; } } }
+ if(tl==4){ if(nm[0]=='e'){ if(nm[1]=='l'){ if(nm[2]=='s'){ if(nm[3]=='e'){ tk=T_ELSE; } } } } }
+ if(tl==5){ if(nm[0]=='w'){ if(nm[1]=='h'){ if(nm[2]=='i'){ if(nm[3]=='l'){ if(nm[4]=='e'){ tk=T_WHILE; } } } } } }
+ if(tl==3){ if(nm[0]=='f'){ if(nm[1]=='o'){ if(nm[2]=='r'){ tk=T_FOR; } } } }
  return; }
 if(c=='+'){ tk=T_PLUS; pos=pos+1; return; }
 if(c=='-'){ tk=T_MINUS; pos=pos+1; return; }
@@ -85,11 +93,14 @@ if(c=='*'){ tk=T_STAR; pos=pos+1; return; }
 if(c=='/'){ tk=T_SLASH; pos=pos+1; return; }
 if(c=='('){ tk=T_LPAREN; pos=pos+1; return; }
 if(c==')'){ tk=T_RPAREN; pos=pos+1; return; }
-if(c=='='){ tk=T_ASSIGN; pos=pos+1; return; }
-if(c==';'){ tk=T_SEMI; pos=pos+1; return; }
 if(c==','){ tk=T_COMMA; pos=pos+1; return; }
 if(c=='{'){ tk=T_LBRACE; pos=pos+1; return; }
 if(c=='}'){ tk=T_RBRACE; pos=pos+1; return; }
+if(c==';'){ tk=T_SEMI; pos=pos+1; return; }
+if(c=='='){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_EQ; pos=pos+1; return; } } tk=T_ASSIGN; return; }
+if(c=='<'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_LE; pos=pos+1; return; } } tk=T_LT; return; }
+if(c=='>'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_GE; pos=pos+1; return; } } tk=T_GT; return; }
+if(c=='!'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_NE; pos=pos+1; return; } } ie(); }
 tk=T_NUM; ie(); }
 void em_p(int v){ print_str("    pushl $"); print_int(v); print_str("\n"); }
 void em_o(int t){
@@ -98,9 +109,21 @@ if(t==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n  
 if(t==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
 if(t==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
 if(t==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); } }
-int pr(int t){ if(t==T_UN){ return 3; } if(t==T_STAR){ return 2; } if(t==T_SLASH){ return 2; } return 1; }
+void em_cm(int t){
+if(t==T_EQ){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    sete %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_NE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setne %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_LT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setl %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setle %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_GE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); } }
+int iscm(int t){ if(t==T_EQ){ return 1; } if(t==T_NE){ return 1; } if(t==T_LT){ return 1; } if(t==T_LE){ return 1; } if(t==T_GT){ return 1; } if(t==T_GE){ return 1; } return 0; }
+int pr(int t){ if(t==T_UN){ return 3; } if(t==T_STAR){ return 2; } if(t==T_SLASH){ return 2; } if(t==T_PLUS){ return 1; } if(t==T_MINUS){ return 1; } return 0; }
+void em_pop(int t){ if(iscm(t)==1){ em_cm(t); } else { em_o(t); } }
 void em_ld(int o){ print_str("    pushl "); print_int(o); print_str("(%ebp)\n"); }
 void es_(int o){ print_str("    popl %eax\n    movl %eax, "); print_int(o); print_str("(%ebp)\n    pushl %eax\n"); }
+void em_jz(int n){ print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); print_int(n); print_str("\n"); }
+void em_jmp(int n){ print_str("    jmp L"); print_int(n); print_str("\n"); }
+void em_lbl(int n){ print_str("L"); print_int(n); print_str(":\n"); }
 void e_expr(){ int s; int sp; int stp; int stl; int q; int i; int j; int d; int c; int n;
 while(1){
 if(tk==T_NUM){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
@@ -111,8 +134,9 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   pos=sp; tk=T_ID; tp=stp; tl=stl;
   i=fnfind(); if(i<0){ se(); }
   nx();                       /* '(' */
-  j=0; while(j<16){ ast[astp+j]=argp[j]; j=j+1; }
-  ast[astp+16]=endp; astp=astp+17;
+  j=0; while(j<40){ ast[astp+j]=oq[j]; j=j+1; }
+  j=0; while(j<16){ ast[astp+40+j]=argp[j]; j=j+1; }
+  ast[astp+56]=endp; astp=astp+57;
   q=opn; opn=0; n=0; d=0;
   while(1){ if(pos>=src_len){ se(); } c=src_buf[pos];
    if(c==40){ d=d+1; pos=pos+1; }
@@ -126,29 +150,37 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   print_str("    pushl %eax\n");
   opn=q; aw=0;
   pos=endp; nx();
-  astp=astp-17; endp=ast[astp+16];
-  j=15; while(j>=0){ argp[j]=ast[astp+j]; j=j-1; }
+  astp=astp-57; endp=ast[astp+56];
+  j=15; while(j>=0){ argp[j]=ast[astp+40+j]; j=j-1; }
+  j=39; while(j>=0){ oq[j]=ast[astp+j]; j=j-1; }
  }
  else { pos=sp; tk=T_ID; tp=stp; tl=stl;
   s=fi(); if(s==-1){ se(); } em_ld(s); aw=0; nx(); } }
 else if(tk==T_LPAREN){ if(aw==0){ se(); }
  if(opn>=40){ se(); } oq[opn]=T_LPAREN; opn=opn+1; aw=1; nx(); }
 else if(tk==T_RPAREN){ if(aw==1){ se(); }
- while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_o(oq[opn]); }
- if(opn>0){ opn=opn-1; } else { if(ar>0){ break; } se(); }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
+ if(opn>0){ opn=opn-1; } else { if(ar>0){ break; } if(cr>0){ break; } se(); }
  aw=0; nx(); }
+else if(iscm(tk)==1){
+ if(aw==1){ se(); }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=0){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
+ if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else if(tk==T_PLUS||tk==T_MINUS){
  if(aw==1){ if(tk==T_MINUS){ if(opn>=40){ se(); } oq[opn]=T_UN; opn=opn+1; nx(); } else { se(); } }
  else {
-  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_o(oq[opn]); }
+  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
   if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); } }
 else if(tk==T_STAR||tk==T_SLASH){
  if(aw==1){ se(); }
- while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=2){ opn=opn-1; em_o(oq[opn]); } else { break; } }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=2){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else { break; } }
 if(aw==1){ se(); }
-while(opn>0){ if(oq[opn-1]==T_LPAREN){ se(); } opn=opn-1; em_o(oq[opn]); } }
+while(opn>0){ if(oq[opn-1]==T_LPAREN){ se(); } opn=opn-1; em_pop(oq[opn]); } }
+void p_cmp(){
+e_expr();
+}
 void p_a(){ int s; int sp; int stp; int stl;
 if(tk==T_ID){
  sp=pos; stp=tp; stl=tl;
@@ -163,11 +195,11 @@ if(tk==T_ID){
   return;
  } else {
   pos=sp; tk=T_ID; tp=stp; tl=stl;
-  e_expr();
+  p_cmp();
   return;
  }
 } else {
- e_expr();
+ p_cmp();
 } }
 void pd(){ int j;
 nx();
@@ -185,20 +217,69 @@ while(1){
 } }
 void p_k(){
 nx();
-aw=1; opn=0; e_expr();
+aw=1; opn=0; p_cmp();
 print_str("    popl %eax\n    jmp .Lr"); print_int(la); print_str("\n");
 }
-void fbody(){
+void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp; int btl; int ns;
 aw=1; opn=0;
-if(tk==T_INT){ pd(); }
-else if(tk==T_RETURN){ p_k(); }
-else { p_a(); }
-if(tk!=T_SEMI){ se(); }
-} 
+if(tk==T_INT){ ns=0; pd(); }
+else if(tk==T_RETURN){ ns=0; p_k(); }
+else if(tk==T_LBRACE){ ns=1; nx();
+ while(tk!=T_RBRACE){ p_s(); }
+ if(tk!=T_RBRACE){ se(); } nx(); }
+else if(tk==T_IF){ ns=1; nx();
+ if(tk!=T_LPAREN){ se(); } nx();
+ cr=cr+1; p_cmp(); cr=cr-1;
+ if(tk!=T_RPAREN){ se(); }
+ t1=lc; lc=lc+1; t2=lc; lc=lc+1;
+ em_jz(t1);
+ nx();
+ p_s();
+ if(tk==T_ELSE){ em_jmp(t2); em_lbl(t1); nx(); p_s(); em_lbl(t2); }
+ else { em_lbl(t1); } }
+else if(tk==T_WHILE){ ns=1; nx();
+ t1=lc; lc=lc+2;
+ if(tk!=T_LPAREN){ se(); } nx();
+ em_lbl(t1);
+ cr=cr+1; p_cmp(); cr=cr-1;
+ if(tk!=T_RPAREN){ se(); }
+ em_jz(t1+1);
+ nx();
+ p_s();
+ em_jmp(t1);
+ em_lbl(t1+1); }
+else if(tk==T_FOR){ ns=1;
+ t1=lc; lc=lc+3;
+ nx();
+ if(tk!=T_LPAREN){ se(); } nx();
+ /* init */ if(tk!=T_SEMI){ aw=1; opn=0; p_a(); }
+ if(tk!=T_SEMI){ se(); }
+ nx(); /* cond */
+ em_lbl(t1);
+ if(tk==T_SEMI){ print_str("    pushl $1\n"); } else { aw=1; opn=0; p_cmp(); em_jz(t1+2); }
+ if(tk!=T_SEMI){ se(); }
+ nx(); /* inc 首 token（可能 ')' 空） */
+ ip=tp;
+ incf=0;
+ if(tk!=T_RPAREN){ incf=1; d=0;
+  while(1){ if(pos>=src_len){ se(); } t2=src_buf[pos];
+   if(t2==40){ d=d+1; pos=pos+1; }
+   else if(t2==41){ if(d==0){ pos=pos+1; break; } d=d-1; pos=pos+1; }
+   else { pos=pos+1; } } }
+ nx(); /* body 起点 */
+ p_s();
+ bpos=pos; btk=tk; btp=tp; btl=tl;
+ em_lbl(t1+1);
+ if(incf==1){ pos=ip; nx(); cr=cr+1; aw=1; opn=0; p_a(); cr=cr-1; }
+ pos=bpos; tk=btk; tp=btp; tl=btl;
+ em_jmp(t1);
+ em_lbl(t1+2); }
+else { ns=0; p_a(); }
+if(ns==0){ if(tk!=T_SEMI){ se(); } }
+if(tk==T_SEMI){ nx(); } }
 void floop(){
 while(tk!=T_RBRACE){
- fbody();
- nx();
+ p_s();
 } }
 void pfun(){
 int p; int j;
@@ -208,7 +289,8 @@ p=0;
 while(p<tl){ fns[fsc*16+p]=nm[p]; p=p+1; }
 fnp[fsc]=0;
 if(tl==4){ if(nm[0]=='m'){ if(nm[1]=='a'){ if(nm[2]=='i'){ if(nm[3]=='n'){ mn=fsc; } } } } }
-print_str("f"); print_int(fsc); print_str(":\n    pushl %ebp\n    movl %esp, %ebp\n");
+print_str("f"); print_int(fsc); print_str(":\n");
+print_str("    pushl %ebp\n    movl %esp, %ebp\n");
 la=lc; lc=lc+1;
 fsc=fsc+1;
 nx();
@@ -254,7 +336,7 @@ print_str("    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    l
 print_str("\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
 }
 void et(){ }
-int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; astp=0;
+int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; cr=0; astp=0;
 nx();
 ptop();
 if(mn<0){ se(); }
