@@ -43,6 +43,7 @@
 | gcc | ~~15.2.0~~ **已卸载（2026-08-25）** | 无蛋后环境无任何 C/C++ 编译器（apt purge gcc 系 + libc6-dev 系 + gcc-arm-none-eabi；保留非编译器的运行库 libgcc-s1/gcc-16-base） |
 | as | 2.46（binutils） | stage-0 构建 + 自证管线：`as --32` 汇编 |
 | ld | 2.46（binutils） | stage-0 构建 + 自证管线：`ld -m elf_i386` 链接（无 crt） |
+| gdb | 17.1（2026-08-25 安装） | 排障调试工具（非 C/C++ 编译器；v0 实现期用于定位段错误） |
 | 裸 i386 syscall 链 | 手写 `_start` + `write`/`exit` syscall | 无蛋自证管线的运行底座（无 libc）；已冒烟验证（as+ld 直链可运行，退出码正确） |
 | ~~/lib32 crt+libc~~ | 已随 `libc6-dev-i386` 卸载移除 | v0 自证不依赖 libc/crt |
 | 已卸载（2026-08-24） | g++ / g++-multilib / flex / bison / makeinfo | 精简，保留"汇编基本运行"最小链 |
@@ -113,9 +114,9 @@
 | 项 | 状态 |
 |----|------|
 | 阶段门控 | 自研阶段，对照**关闭** |
-| v0（P0） | 实现与旧文档已重置删除（commit `84204c0`），按**无蛋策略**（§6，汇编引导）待重推 |
-| 环境 | 干净可用（as、ld 2.46 + 裸 syscall 自证链；**gcc 已卸载，环境无任何 C/C++ 编译器**） |
-| 下一步 | 已产出 v0 无蛋架构评审（docs/design/architecture-v0-eggfree.md，Winston 2026-08-25）；待开工：手写汇编 stage-0 → 自证 10/10 → 验收 |
+| v0（P0） | **2026-08-25 无蛋重推完成**：`src/pggcc0.s`（手写 i386 汇编 stage-0），tests/run.sh 10/10 自证通过；ORIGIN v0 行与当日日志已登记（见 docs/logs/2026-08-25.md 会话 4） |
+| 环境 | 干净可用（as、ld 2.46 + gdb 17.1 + 裸 syscall 自证链；**gcc 已卸载，环境无任何 C/C++ 编译器**） |
+| 下一步 | v1（P1）变量声明与赋值（plan §4.1 细则已定），可随时开发 |
 
 ## 8. 变更登记
 
@@ -126,3 +127,5 @@
 | 2026-08-25 | 蛋策略决策：**彻底无蛋**——编译器本体改用手写 i386 汇编（stage-0，无 libc/裸 syscall），构建链 as+ld（无 crt），全链不调用任何 C/C++ 编译器；gcc 15.2 从构建链退役（可卸载）；"会汇编"纳入实验范围 | 用户决策"彻底无蛋" + "会汇编也是理解编译器的实验之一" | 基线 §6 已成文，README/run.sh 联动更新 |
 | 2026-08-25 | **卸载 gcc 系编译器**：apt purge gcc/gcc-multilib/gcc-15 系/cpp 系/libc6-dev 系/libgcc-15-dev/gcc-arm-none-eabi + autoremove（root 执行，`wsl -d Ubuntu -u root`）；保留运行库 libgcc-s1/gcc-16-base（非编译器）；/lib32 随 libc6-dev-i386 移除；卸载后冒烟：裸 syscall 程序 as+ld 直链（无 crt）运行退出码 42 ✅ | 用户决策"立即卸载" | 环境无任何 C/C++ 编译器 |
 | 2026-08-25 | v0 无蛋架构评审产出（Winston）：设计权衡（AST 节点池/无 libc I-O/生成程序自含 print+_start/除法截断语义/工具边界）+ 模块划分 + 里程碑 M1-M4 + 风险与验收门 | 用户决策"先架构评审" | docs/design/architecture-v0-eggfree.md |
+| 2026-08-25 | **安装 gdb 17.1**（apt，用于 v0 实现期定位段错误；工具类同 as/ld，非 C/C++ 编译器） | 排障需要 | 环境登记：§3.2 环境表已列 |
+| 2026-08-25 | **v0（P0）无蛋重推完成**：手写 `src/pggcc0.s`（无 libc/crt，裸 syscall），tests/run.sh 10/10 自证通过；实现期修复 2 个自研 bug（app_dec 循环计数被 app_char 破坏 → SIGSEGV；递归下降中待发码算子被内层重入覆盖 → 运算符错发），详见当日日志会话 4 | 用户指示"开始实验"；plan §4.0 + 评审 §7 | §7 状态表已更新为完成 |

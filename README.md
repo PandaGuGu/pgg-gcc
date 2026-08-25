@@ -44,7 +44,7 @@
 
 | 版本（阶段） | 状态 | 目标 |
 |------|------|------|
-| v0（P0） | ⏳ 待重推 | 词法 + 整数四则表达式 → 汇编输出（无蛋汇编引导；细则见 [plan §4.0](docs/design/plan-language-features.md)） |
+| v0（P0） | ✅ v0 完成（10/10 自证通过） | 词法 + 整数四则表达式 → 汇编输出（无蛋汇编引导；细则见 [plan §4.0](docs/design/plan-language-features.md)） |
 | v1（P1） | 📋 细则已定 | 变量声明与赋值（stdin 程序文本；细则见 plan §4.1） |
 | v2（P2） | 📋 细则已定 | 函数定义与调用（main 入口、cdecl 约定；细则见 plan §4.2） |
 | v3（P3） | 📋 细则已定 | 控制流：if/while/for、比较、块作用域（细则见 plan §4.3） |
@@ -68,7 +68,7 @@ pgg-gcc/
 ## 构建
 
 ```bash
-# v0 版本（无蛋引导：手写汇编 stage-0，不调用任何 C/C++ 编译器；当前源码待重推）
+# v0 版本（无蛋引导：手写汇编 stage-0，不调用任何 C/C++ 编译器；2026-08-25 重推完成，自证 10/10）
 as --32 -o build/pggcc0.o src/pggcc0.s
 ld -m elf_i386 -o build/pggcc build/pggcc0.o
 ./build/pggcc "1+2*3"
