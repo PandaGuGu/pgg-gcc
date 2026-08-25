@@ -132,6 +132,30 @@ run_case "int main(){ int i; int s; i=0; s=0; while(i<5){ i=i+1; if(i==3){ conti
 run_case "int main(){ int i; int s; i=0; s=0; do { i=i+1; if(i==2){ continue; } s=s+i; } while(i<4); return s; }" 8
 run_case "int main(){ int i; int j; int s; s=0; for(i=0;i<3;i=i+1){ for(j=0;j<5;j=j+1){ if(j==2){ break; } s=s+1; } } return s; }" 6
 
+echo "== v4/B2g：全局（标量·初值·数组·char）与字符字面量 =="
+run_case "int g=7; int main(){ return g; }" 7
+run_case "int a; int b; int main(){ a=1; b=2; return a*10+b; }" 12
+run_case "int ia[3]; int main(){ ia[0]=7; ia[1]=8; ia[2]=9; return ia[0]+ia[1]+ia[2]; }" 24
+run_case "char cb[4]; int main(){ cb[0]=65; cb[1]=66; return cb[0]+cb[1]; }" 131
+run_case "int main(){ return 'A'+1; }" 66
+run_case "int main(){ char c; c='Z'; return c; }" 90
+
+echo "== v4/B2g：字符串字面量 + 内建 print_str/print_int/print_err（%eax 传参） =="
+run_case "int main(){ print_str(\"hi\"); return 5; }" "hi5"
+run_case "int main(){ print_str(\"a\"); print_str(\"b\"); return 1; }" "ab1"
+run_case "int main(){ print_int(123); return 4; }" "1234"
+run_case "int main(){ print_int(-7); return 0; }" "-70"
+run_case "int main(){ print_err(\"oops\"); return 7; }" 7
+run_case "int main(){ print_str(\"x\\ny\"); return 2; }" "x
+y2"
+
+echo "== v4/B2g：逻辑 && || !（非短路，0/1 规整）与 void/注释 =="
+run_case "int main(){ return (1&&1) + (1&&0); }" 1
+run_case "int main(){ return (0||1) + (0||0); }" 1
+run_case "int main(){ return !0 + !7; }" 1
+run_case "void f(){ print_str(\"z\"); } int main(){ f(); return 4; }" "z4"
+run_case "int main(){ /* 注释 */ int a; a=3; return a; }" 3
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
@@ -141,7 +165,7 @@ run_err "int main(){ return 1 }" 2
 
 echo "== v3/B2d 错误用例（缺括号/非法算子） =="
 run_err "int main(){ int i; for(i=0;i<3;{ i=i+1; } }" 2
-run_err "int main(){ return 2&&3; }" 1
+run_err "int main(){ return 2%3; }" 1
 
 echo "== v3/B2e 错误用例（同作用域重声明：同块 / 参数·函数体顶层） =="
 run_err "int main(){ int a; int a; return 0; }" 2
