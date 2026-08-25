@@ -34,7 +34,7 @@
 | 文档 | 作用 |
 |------|------|
 | [docs/design/experiment-baseline.md](docs/design/experiment-baseline.md) | **实验与环境基线**：实验定义、硬约束（红线）、环境清单（WSL 工具链）、自研/对照两套流程、§6 无蛋引导策略 |
-| [docs/design/plan-language-features.md](docs/design/plan-language-features.md) | **语言特性实现计划**：C90→C23 / C++98→26 特性台账；§4 P0–P3 可直接开工细则（词法/文法/语义/发码/自证点） |
+| [docs/design/plan-language-features.md](docs/design/plan-language-features.md) | **语言特性实现计划**：C90→C23 / C++98→26 特性台账；§4 P0–P3 可直接开工细则（词法/文法/语义/发码/自证点）；§6 自举路线（生蛋时机决策 + 里程碑 B0–B6） |
 | [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) | **v0 无蛋架构评审**（Winston）：设计权衡 T1–T5、里程碑 M1–M4、验收门、§7 接口定标 |
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
