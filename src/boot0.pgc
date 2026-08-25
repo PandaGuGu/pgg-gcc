@@ -1,11 +1,12 @@
-/* boot0.pgc B2e self-host step5: read v3 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
-   face: + block scope ({} shadow outer, pop-back + addl $4k stack reclaim, per-function sc reset) /
+/* boot0.pgc B2f self-host step6: read v3 program text (stdin) -> emit i386 AT&T .s (eggless; self-derived)
+   face: + do-while / break / continue (loop label stack lcs/lbl by depth ld) /
+   block scope ({} shadow outer, pop-back + addl $4k stack reclaim, per-function sc reset) /
    comparison ops == != < <= > >= (setCC) / if-else else-if / while / for (scan-replay inc) /
    return / calls / decl-assign (v1-v2 carried); L%d jump labels; self-recursive p_s stmt parser
    (blocks/control flow inlined, no mutual recursion); main() return printed.
    workarounds kept: nested-if lexer (pggcc4 >=3-way || defect), fi sentinel s==-1, one-arg scan init,
    ast-stack saves argp/endp for nested calls, ar depth counter, driver loops keep if inside helpers (D16),
-   ns semicolon-strictness flag (if/while/for/block skip ';' requirement, else/return/decl strict),
+   ns semicolon-strictness flag (if/while/for/block skip ';' requirement, else/return/decl/do/break/continue strict),
    for-loop incf empty-inc + body-token save/restore (bpos/btk/btp/btl) for inc-after-body replay,
    fi reverse search (shadow wins), bstk/blok block-base stack, pd same-scope collision check only.
    without any C/C++ compiler reference; ISO 9899:1990 6.1/6.2.1/6.3/6.6 */
@@ -13,7 +14,7 @@ int pg_quiet=1;
 char src_buf[4096];
 int src_len;
 int pos,tk,tv,tp,tl,aw,opn;
-int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16,T_EQ=17,T_NE=18,T_LT=19,T_LE=20,T_GT=21,T_GE=22,T_IF=23,T_ELSE=24,T_WHILE=25,T_FOR=26;
+int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16,T_EQ=17,T_NE=18,T_LT=19,T_LE=20,T_GT=21,T_GE=22,T_IF=23,T_ELSE=24,T_WHILE=25,T_FOR=26,T_DO=27,T_BREAK=28,T_CONTINUE=29;
 int oq[40];
 char eb[40];
 char sn[512];
@@ -31,6 +32,9 @@ int locn;
 int bstk[16];
 int blok[16];
 int bd;
+int lcs[16];
+int lbl[16];
+int ld;
 int argp[16];
 int endp;
 int ar;
@@ -92,6 +96,9 @@ if(k==1){ tk=T_ID; tl=0;
  if(tl==4){ if(nm[0]=='e'){ if(nm[1]=='l'){ if(nm[2]=='s'){ if(nm[3]=='e'){ tk=T_ELSE; } } } } }
  if(tl==5){ if(nm[0]=='w'){ if(nm[1]=='h'){ if(nm[2]=='i'){ if(nm[3]=='l'){ if(nm[4]=='e'){ tk=T_WHILE; } } } } } }
  if(tl==3){ if(nm[0]=='f'){ if(nm[1]=='o'){ if(nm[2]=='r'){ tk=T_FOR; } } } }
+ if(tl==2){ if(nm[0]=='d'){ if(nm[1]=='o'){ tk=T_DO; } } }
+ if(tl==5){ if(nm[0]=='b'){ if(nm[1]=='r'){ if(nm[2]=='e'){ if(nm[3]=='a'){ if(nm[4]=='k'){ tk=T_BREAK; } } } } } }
+ if(tl==8){ if(nm[0]=='c'){ if(nm[1]=='o'){ if(nm[2]=='n'){ if(nm[3]=='t'){ if(nm[4]=='i'){ if(nm[5]=='n'){ if(nm[6]=='u'){ if(nm[7]=='e'){ tk=T_CONTINUE; } } } } } } } } }
  return; }
 if(c=='+'){ tk=T_PLUS; pos=pos+1; return; }
 if(c=='-'){ tk=T_MINUS; pos=pos+1; return; }
@@ -128,6 +135,7 @@ void em_pop(int t){ if(iscm(t)==1){ em_cm(t); } else { em_o(t); } }
 void em_ld(int o){ print_str("    pushl "); print_int(o); print_str("(%ebp)\n"); }
 void es_(int o){ print_str("    popl %eax\n    movl %eax, "); print_int(o); print_str("(%ebp)\n    pushl %eax\n"); }
 void em_jz(int n){ print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); print_int(n); print_str("\n"); }
+void em_jnz(int n){ print_str("    popl %eax\n    testl %eax, %eax\n    jnz L"); print_int(n); print_str("\n"); }
 void em_jmp(int n){ print_str("    jmp L"); print_int(n); print_str("\n"); }
 void em_lbl(int n){ print_str("L"); print_int(n); print_str(":\n"); }
 void e_expr(){ int s; int sp; int stp; int stl; int q; int i; int j; int d; int c; int n;
@@ -255,6 +263,8 @@ else if(tk==T_IF){ ns=1; nx();
  else { em_lbl(t1); } }
 else if(tk==T_WHILE){ ns=1; nx();
  t1=lc; lc=lc+2;
+ if(ld>=16){ se(); }
+ lcs[ld]=t1; lbl[ld]=t1+1; ld=ld+1;
  if(tk!=T_LPAREN){ se(); } nx();
  em_lbl(t1);
  cr=cr+1; p_cmp(); cr=cr-1;
@@ -263,9 +273,12 @@ else if(tk==T_WHILE){ ns=1; nx();
  nx();
  p_s();
  em_jmp(t1);
+ ld=ld-1;
  em_lbl(t1+1); }
 else if(tk==T_FOR){ ns=1;
  t1=lc; lc=lc+3;
+ if(ld>=16){ se(); }
+ lcs[ld]=t1+1; lbl[ld]=t1+2; ld=ld+1;
  nx();
  if(tk!=T_LPAREN){ se(); } nx();
  /* init */ if(tk!=T_SEMI){ aw=1; opn=0; p_a(); }
@@ -289,7 +302,33 @@ else if(tk==T_FOR){ ns=1;
  if(incf==1){ pos=ip; nx(); cr=cr+1; aw=1; opn=0; p_a(); cr=cr-1; }
  pos=bpos; tk=btk; tp=btp; tl=btl;
  em_jmp(t1);
+ ld=ld-1;
  em_lbl(t1+2); }
+else if(tk==T_DO){ ns=0;
+ t1=lc; lc=lc+2;
+ if(ld>=16){ se(); }
+ lcs[ld]=t1; lbl[ld]=t1+1; ld=ld+1;
+ em_lbl(t1);
+ nx();
+ p_s();
+ if(tk!=T_WHILE){ se(); }
+ nx();
+ if(tk!=T_LPAREN){ se(); } nx();
+ aw=1; opn=0;
+ cr=cr+1; p_cmp(); cr=cr-1;
+ if(tk!=T_RPAREN){ se(); }
+ em_jnz(t1);
+ ld=ld-1;
+ em_lbl(t1+1);
+ nx(); }
+else if(tk==T_BREAK){ ns=0;
+ if(ld<=0){ se(); }
+ em_jmp(lbl[ld-1]);
+ nx(); }
+else if(tk==T_CONTINUE){ ns=0;
+ if(ld<=0){ se(); }
+ em_jmp(lcs[ld-1]);
+ nx(); }
 else { ns=0; p_a(); }
 if(ns==0){ if(tk!=T_SEMI){ se(); } }
 if(tk==T_SEMI){ nx(); } }
@@ -354,7 +393,7 @@ print_str("    pushl %eax\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    l
 print_str("\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
 }
 void et(){ }
-int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; cr=0; astp=0; bd=0;
+int main(){ pos=0; sc=0; fsc=0; locn=0; lc=1; mn=-1; aw=1; opn=0; ar=0; cr=0; astp=0; bd=0; ld=0;
 nx();
 ptop();
 if(mn<0){ se(); }

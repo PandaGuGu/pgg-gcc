@@ -1,5 +1,5 @@
 #!/bin/bash
-# B2e 自举第五步自证：pggcc4（自研 stage-4）编译 src/boot0.pgc -> bin0（B2e 面：+块作用域；比较/if-else/while/for/递归）
+# B2f 自举第六步自证：pggcc4（自研 stage-4）编译 src/boot0.pgc -> bin0（B2f 面：+do-while/break/continue；比较/if-else/while/for/递归/块作用域）
 #   bin0 读入 v3 程序文本（stdin，函数序列，入口 main 返回其返回值）-> 输出 .s -> as --32 -> ld -m elf_i386 -> 运行比对
 # 全程无任何 C/C++ 编译器参与（as/ld 为项目地板层机械工具，无编译语义）。
 # 协议（v3，architecture-b2-bootstrap §4）：程序=函数定义序列；main 返回值打印；错误 exit 2（缺 main/未定义/重定义/语法）。
@@ -122,6 +122,16 @@ run_case "int main(){ int s; s=0; while(0){ int x; x=1; s=s+x; } return s; }" 0
 run_case "int main(){ int a; a=0; { int b; b=1; int c; c=2; return b*10+c; } }" 12
 run_case "int main(){ int a; a=3; { int b; b=4; } int c; c=a+1; return c; }" 4
 
+echo "== v3/B2f：do-while / break / continue（循环控制标号栈 lcs/lbl） =="
+run_case "int main(){ int i; int s; i=0; s=0; do { s=s+i; i=i+1; } while(i<5); return s; }" 10
+run_case "int main(){ int i; i=0; do { i=i+1; } while(0); return i; }" 1
+run_case "int main(){ int i; i=0; while(1){ i=i+1; if(i==3){ break; } } return i; }" 3
+run_case "int main(){ int i; int s; s=0; for(i=0;i<10;i=i+1){ if(i==4){ break; } s=s+i; } return s; }" 6
+run_case "int main(){ int i; int s; s=0; for(i=0;i<5;i=i+1){ if(i==2){ continue; } s=s+i; } return s; }" 8
+run_case "int main(){ int i; int s; i=0; s=0; while(i<5){ i=i+1; if(i==3){ continue; } s=s+i; } return s; }" 12
+run_case "int main(){ int i; int s; i=0; s=0; do { i=i+1; if(i==2){ continue; } s=s+i; } while(i<4); return s; }" 8
+run_case "int main(){ int i; int j; int s; s=0; for(i=0;i<3;i=i+1){ for(j=0;j<5;j=j+1){ if(j==2){ break; } s=s+1; } } return s; }" 6
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
@@ -136,6 +146,11 @@ run_err "int main(){ return 2&&3; }" 1
 echo "== v3/B2e 错误用例（同作用域重声明：同块 / 参数·函数体顶层） =="
 run_err "int main(){ int a; int a; return 0; }" 2
 run_err "int f(int a){ int a; return a; } int main(){ return 0; }" 2
+
+echo "== v3/B2f 错误用例（循环外 break/continue、do-while 缺分号） =="
+run_err "int main(){ break; return 0; }" 2
+run_err "int main(){ continue; return 0; }" 2
+run_err "int main(){ int i; i=0; do { i=i+1; } while(0) }" 2
 
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"

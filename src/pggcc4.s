@@ -86,6 +86,8 @@
 #   E1 B2a 前置：源码读入上限 4096→65536（boot0.pgc 本体 >4KB，B2 自举必需；in_buf 扩容）。
 #   E2 B2d 前置：字符串字面量常量表上限 64→256（B2d 起 boot0.pgc 模板字面量 >64 条；str_tab 扩容）。
 #   E3 B2d 前置：函数数上限 32→64（B2d 起 boot0.pgc 函数数 >32；fn 表/计数扩容）。
+#   E4 B2f 前置：全局符号数上限 64→128（B2f 起 boot0.pgc 全局符号恰 64，`ast`/`astp` 位居后段、
+#      居尾者触发 reg_global `.Lrg_full` → 误报语法错误；gs_* 表扩容）。
 #
 # 引擎限制登记（B2a 实测）：字符串字面量解码后 ≤255 字节（str_tab 每条 256B，`cmpl $255,%edx;
 #   jge Lsyn_err`），超出报"未闭合"；boot0 模板须按此分块（见 boot0.pgc et()）。
@@ -148,7 +150,7 @@
 .equ MAX_NAMELEN, 16            # 名长上限
 .equ MAX_FUNC,    64            # 函数数上限（含 3 个运行时内建；E3：B2d 起 boot0 函数 >32）
 .equ MAX_BLK,     64            # 块嵌套深度上限
-.equ MAX_GLB,     64            # 全局符号数上限
+.equ MAX_GLB,     128           # 全局符号数上限（E4：B2f 起 boot0 全局 =64，astp 恰第 64 个越界）
 .equ MAX_STR,     256           # 字符串字面量常量表上限（每条 ≤256B；E2：B2d 起 boot0 模板字面量 >64 条）
 .equ MAX_LOOP,    64            # 循环嵌套深度上限
 
