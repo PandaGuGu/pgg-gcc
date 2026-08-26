@@ -110,7 +110,13 @@
    8B（.quad/.space an*8），struct 内部 4B（.long/stsz）。i386 链零变化（三线全绿）。
    P2-b 完成：run_amd 42 用例覆盖常量/算术/调用/递归/打印/局部/全局/字符/循环/逗号/struct/union/
    ->/&/switch/enum/typedef/位运算/三目/3D 数组/初始化器 全 64 位化。待续：P3 双目标闭台
-   （argv[1]→g_am 运行时接线→bin_amd 直编 boot0.pgc 闭台）+ 数据段细节复核。 */
+   （argv[1]→g_am 运行时接线→bin_amd 直编 boot0.pgc 闭台）+ 数据段细节复核。
+   P3 探索 (2026-08-26, chain): eh() 64 位 _start 补 stdin 预读（read syscall：rax=0/rdi=0/
+   rsi=src_buf/rdx=len，movslq+movq gs）——bin_amd 自编 boot0.pgc 产出 selfamd.s 805KB、
+   as --64/ld 通过即 bin1_amd 可链接（自编译通路通）。发现 g_am 槽在 pggcc4 编译变体与
+   bin_amd 自编译间解析错位（eh/irgo 读 g134 非 g161），sed 常量折叠 g_am==1→1==1 后
+   selfamd.s 全 64 位（syscall×8/0 处 int 0x80），但 bin1_amd 运行时仍出 32 位模板——
+   待解：g_am 自举链传播（下一步：argv[1]→g_am 正式接线 或 pgv 对 g_am 初值正确发码）。 */
 int pg_quiet=1;
 char src_buf[131072];
 int src_len;
@@ -2236,6 +2242,10 @@ ostr("    jnz .Lpi_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %e
 ostr("    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
 } else {
 ostr(".section .text\n.globl _start\n_start:\n");
+if(gsl>=0 && gsb>=0){
+ ostr("    movq g"); oint(gsl); ostr(", %rax\n    testq %rax, %rax\n    jnz L"); oint(q); ostr("\n");
+ ostr("    movl $0, %eax\n    movl $0, %edi\n    leaq g"); oint(gsb); ostr(", %rsi\n    movl $"); oint(gn[gsb]); ostr(", %edx\n    syscall\n    movslq %eax, %rax\n    movq %rax, g"); oint(gsl); ostr("\nL"); oint(q); ostr(":\n");
+}
 ostr("    call f"); oint(mn); ostr("\n");
 if(gpq<0){ ostr("    call print_decimal\n"); ostr("    movl $10, %eax\n    call print_char\n"); }
 if(gpq>=0 && gpqv==0){ ostr("    call print_decimal\n"); ostr("    movl $10, %eax\n    call print_char\n"); }
