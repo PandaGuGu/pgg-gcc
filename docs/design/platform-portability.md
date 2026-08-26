@@ -158,6 +158,13 @@ bin0（x86）直接产出目标 ISA 汇编，用目标平台的 binutils 汇编/
 > - **门控验证**：run_boot **232/232**、boot_b4 闭台**全门 PASS**（门1 boot0b.s==boot0c.s 643214B
 >   逐字节、门2 bin1==bin2、门4 24/24、门5 3/3）、run.sh **72/72**——P1-a 闭环。
 > - 下一步 **P1-b**：IR 指令语义化（高频发码模式编码为操作码+操作数，渲染器按操作码分发）。
+>
+> **P1-b 首轮完成（2026-08-26）**：IR 记录类型扩展（0=文本/1=整数/2=操作码，操作码后随参数记录）；
+> 新增 `OP_PUSHI/OP_PUSHL/OP_STORE/OP_JZ/OP_JNZ/OP_JMP/OP_LBL` 七操作码 + `irop(op,a)`；
+> `em_p/em_ld/es_/em_jz/em_jnz/em_jmp/em_lbl` 七个结构化单参发码函数改为写操作码，`irgo()`
+> 按操作码分发（pushl imm/offset、movl 存储、jz/jnz/jmp/label）——AMD64 渲染器可在这些
+> 分发点按 64 位语义重写。`em_o/em_cm` 等复杂多行文本模板保留值流透传（P1-b 续轮迁移）。
+> 门控：run_boot **232/232**、boot_b4 闭台全门 PASS（固定点不变）、run.sh **72/72**。
 
 ## 6. 决策记录（Q1–Q5，2026-08-26 用户拍板）
 
