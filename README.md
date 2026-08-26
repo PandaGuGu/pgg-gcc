@@ -26,10 +26,12 @@
 > v0 无蛋架构评审见 [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md)。
 >
 > **2026-08-26 自举成功**：B2 自举支线（B2a–g）完成——用 pggcc 语言书写的编译器本体 `src/boot0.pgc`
-> 经AI写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（自编译产物随面扩张增长，现值 ≈586KB .s），
+> 经AI写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（自编译产物随面扩张增长，现值 ≈643KB .s），
 > 二次自举产物行为一致、再编回稳（B3 阶段条件达成）。**2026-08-26 B4 煮蛋闭台验证通过**：
-> `bin0→bin1→bin2` 逐字节固定点（最新复验：boot0b.s==boot0c.s 599909B 逐字节一致、bin1==bin2 二进制一致）、三头行为矩阵 24/24、
-> pg_quiet 语义回归 3/3（详见 [docs/logs/2026-08-26.md](docs/logs/2026-08-26.md)）。
+> `bin0→bin1→bin2` 逐字节固定点（最新复验：boot0b.s==boot0c.s 658294B 逐字节一致、bin1==bin2 二进制一致）、三头行为矩阵 24/24、
+> pg_quiet 语义回归 3/3（详见 [docs/logs/2026-08-26.md](docs/logs/2026-08-26.md)）。**同日 P4-II 收口**：
+> 5 项残余限制（`&` 多维取址、局部初始化器、struct 数组传参、后缀 `[i]` 写、struct 多重指针 `->` 链）已在自举链上清零，
+> **C90 全量达成**（run_boot 232/232、闭台固定点不破，详见 ORIGIN P4-II 行与日志会话 8）。
 > 方案与执行结果见
 > [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md)。
 
@@ -48,7 +50,7 @@
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
 | [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
-| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **212/212** |
+| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **232/232** |
 | [tests/boot_b4.sh](tests/boot_b4.sh) | **B4 煮蛋闭台门**：bin0→bin1→bin2 逐字节固定点 ＋ 三头行为矩阵 ＋ pg_quiet 语义回归；**已全门通过（2026-08-26）** |
 
 ## 路线图
@@ -59,8 +61,8 @@
 | v1（P1） | ✅ v1 完成（10/10 自证通过） | 变量声明与赋值（stdin 程序文本；`int` 声明、`=` 链式赋值、符号表、栈帧局部变量、末语句值打印；细则见 plan §4.1） |
 | v2（P2） | ✅ v2 完成（11/11 自证通过） | 函数定义与调用（`int` 函数/参数表/`return`；cdecl 实参从右到左压栈；`main` 入口打印返回值；函数级作用域；细则见 plan §4.2） |
 | v3（P3） | ✅ v3 完成（15/15 自证通过） | 控制流：if/while/for、比较、块作用域（递归自证 fact(5)==120 → 语言图灵完备，B0 硬门槛达成；细则见 plan §4.3） |
-| v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过）；**P4-II T1–T7＋剩余限制已在自举链落地（run_boot 212/212）**（2026-08-26） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**）；**二期**（C90 全量，链上推进）已含：const/volatile、指针声明符、三目 ?:、逗号、sizeof、位运算+%、switch/case/default、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号 |
-| B2（自举支线） | ✅ B2a–g 完成，**自举成功**（212/212）；**B4 闭台通过、B5 已启用**（2026-08-26） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**→ **B3 达成**；**B4 煮蛋闭台通过**（bin0→bin1→bin2 逐字节固定点，tests/boot_b4.sh）；**B5 日常开发已切到自举链**（改 boot0.pgc → bin1 编 → run_boot 212 门；pggcc4 冻结为跨链参照；操作约定见 architecture-b2 §8.1） |
+| v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过）；**P4-II T1–T7＋收口已在自举链落地，C90 全量达成（run_boot 232/232）**（2026-08-26） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**）；**二期**（C90 全量，链上推进）已含：const/volatile、指针声明符、三目 ?:、逗号、sizeof、位运算+%、switch/case/default、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号、局部初始化器、struct 多重指针 `->` 链 |
+| B2（自举支线） | ✅ B2a–g 完成，**自举成功**（232/232）；**B4 闭台通过、B5 已启用**（2026-08-26） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**→ **B3 达成**；**B4 煮蛋闭台通过**（bin0→bin1→bin2 逐字节固定点，tests/boot_b4.sh）；**B5 日常开发已切到自举链**（改 boot0.pgc → bin1 编 → run_boot 232 门；pggcc4 冻结为跨链参照；操作约定见 architecture-b2 §8.1） |
 | v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集），B5 起在自举链上继续 |
 | C++ | 📋 待办（backlog） | 待 C 系列成熟后启动：从 C++98 起实现（类、重载、模板…），IR/代码生成复用 C 侧 |
 
@@ -97,7 +99,7 @@ ld -m elf_i386 -o build/bin0 build/bin0.o               # bin0 = B0 编译器
 
 ```bash
 bash tests/run.sh        # 主链：v0–v4.1 全部用例，72/72
-bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，212/212
+bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，232/232
 ```
 
 ## 贡献者
