@@ -120,7 +120,7 @@ bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译
   本仓库与 WSL 环境现已**无任何 C/C++ 编译器**；黑盒产物（如 gcc295）重建须用户显式放行 + 日志留痕。
 - **不读源码**：不阅读、复制、逐行移植 GCC 及其他编译器源码；仅依据公开语言标准（ISO 9899/14882）与
   通用编译原理。源码树与源码包不得留存于实验环境。
-- **实现形态**：编译器本体为**手写（AI） i386 汇编**（无 libc/crt，见基线 §6），构建链仅 `as`/`ld`
+- **实现形态**：编译器本体为**AI编写的 i386 汇编**（无 libc/crt，见基线 §6），构建链仅 `as`/`ld`
   （助记符→二进制的机械翻译器，可用）；不得擅自改回"用 gcc 构建"。
 - **开工前必读**：先读 [plan-language-features.md](docs/design/plan-language-features.md) §4（本阶段细则）
   与 [architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) §7（接口定标）再动手；
