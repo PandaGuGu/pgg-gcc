@@ -151,7 +151,7 @@
 .equ MAX_FUNC,    64            # 函数数上限（含 3 个运行时内建；E3：B2d 起 boot0 函数 >32）
 .equ MAX_BLK,     64            # 块嵌套深度上限
 .equ MAX_GLB,     256           # 全局符号数上限（E4：B2f 起 boot0 全局 =64，astp 恰第 64 个越界；E6：P4-II boot0 全局 131，T_* 常量行 56 个命名常量也计全局）
-.equ MAX_STR,     512           # 字符串字面量常量表上限（每条 ≤256B；E2：B2d 起 boot0 模板字面量 >64 条；E5：B5 面扩张 wpf 起 136 唯一条、含 peek/回放重复词法 ~1.9× 实入 257 次 >256）
+.equ MAX_STR,     1024          # 字符串字面量常量表上限（每条 ≤256B；E2：B2d 起 boot0 模板字面量 >64 条；E5：B5 面扩张 wpf 起 136 唯一条、含 peek/回放重复词法 ~1.9× 实入 257 次 >256；E7：P4-II T6/T7 boot0 本体 print_str 调用 165→265、实入计次 ~500 次 → 512 截断，pgquiet 段字面量登记点 Lsyn_err）
 .equ MAX_LOOP,    64            # 循环嵌套深度上限
 
 .section .rodata

@@ -12,7 +12,8 @@ as --32 -o build/pggcc4.o src/pggcc4.s || { echo "BUILD FAILED(as)"; exit 1; }
 ld -m elf_i386 -o build/pggcc4 build/pggcc4.o || { echo "BUILD FAILED(ld)"; exit 1; }
 
 echo "== 构建 bin0（bin0 = pggcc4 编译 boot0.pgc 所得自举编译器） =="
-if ! timeout 5 ./build/pggcc4 < src/boot0.pgc > build/boot0.s 2>build/boot0_err.txt; then
+# boot0.pgc 本体自编译在 WSL/mnt 下实测 ~4.6s（含 wpf 长编译），timeout 5 边界抖动会误杀 → 余量提到 30
+if ! timeout 30 ./build/pggcc4 < src/boot0.pgc > build/boot0.s 2>build/boot0_err.txt; then
     echo "boot0.pgc 编译失败:"; cat build/boot0_err.txt; exit 1
 fi
 as --32 -o build/boot0.o build/boot0.s || { echo "boot0.s 汇编失败"; exit 1; }
@@ -238,6 +239,43 @@ run_case "typedef char C; int main(){ C c; c=65; return c; }" 65
 run_case "typedef int I; int f(I a, I b){ return a*b; } int main(){ return f(3,4); }" 12
 run_case "typedef int I; I g; int main(){ g=9; return g; }" 9
 run_case "typedef int I; void f(I *p){ p[0]=5; } int g[2]; int main(){ f(g); return g[0]; }" 5
+
+echo "== P4-II T7：一元 * 解引用读 + & 取址 + 二维全局数组（期望值手算；*写/&a[0]登记不支持） =="
+run_case "int main(){ int x; int *p; x=7; p=&x; return *p; }" 7
+run_case "int g; int *p; int main(){ g=9; p=&g; return *p; }" 9
+run_case "int f(int *p){ return *p; } int main(){ int x; int *q; x=6; q=&x; return f(q); }" 6
+run_case "int a[3][2]; int main(){ a[0][1]=5; a[2][0]=7; return a[0][1]+a[2][0]; }" 12
+run_case "int a[2][3]; int main(){ int s; int i; int j; s=0; for(i=0;i<2;i=i+1){ for(j=0;j<3;j=j+1){ a[i][j]=i*10+j; } } return a[1][2]+a[0][2]; }" 14
+run_case "char c[2][2]; int main(){ c[0][1]=65; c[1][0]=66; return c[0][1]+c[1][0]; }" 131
+run_case "int a[3][4]; int main(){ int s; s=0; s=s+sizeof(a); return s; }" 48
+
+echo "== P4-II T6：struct/union（成员布局/点访问/嵌套/整值赋值/sizeof；期望值手算） =="
+run_case "struct P { int x; int y; }; struct P g; int main(){ g.x=5; g.y=7; return g.x*10+g.y; }" 57
+run_case "struct P { int a; int b; }; int main(){ struct P s; s.a=3; s.b=4; return s.a*10+s.b; }" 34
+run_case "struct C { char c; int i; }; int main(){ struct C s; s.c=65; s.i=7; return s.c+s.i; }" 72
+run_case "struct S { char a; int b; }; int main(){ return sizeof(struct S); }" 8
+run_case "struct P { int x; int y; }; struct P g1; struct P g2; int main(){ g1.x=1; g1.y=2; g2=g1; return g2.x*10+g2.y; }" 12
+run_case "struct P { int a; int b; }; int main(){ struct P s1; struct P s2; s1.a=5; s1.b=6; s2=s1; return s2.a*10+s2.b; }" 56
+run_case "struct P { int x; int y; }; struct R { struct P p; int z; }; int main(){ struct R r; r.p.x=1; r.p.y=2; r.z=3; return r.p.x*100+r.p.y*10+r.z; }" 123
+run_case "struct C { char c; char d; }; int main(){ struct C s; s.c=65; s.d=66; return s.c*10+s.d; }" 716
+run_case "union U { char c; int i; }; int main(){ union U u; u.i=0; u.c=68; return u.c; }" 68
+run_case "union U { char a; int b; }; int main(){ return sizeof(union U); }" 4
+run_case "union U { char a; int b; }; union U g; int main(){ g.b=7; return g.b; }" 7
+run_case "struct P { int x; int y; }; union U { char c; struct P p; }; int main(){ union U u; u.p.x=5; return u.p.x; }" 5
+
+echo "== P4-II T7：局部一/二维数组（int/char；3 维登记限制） =="
+run_case "int main(){ int a[3]; a[0]=1; a[1]=2; a[2]=3; return a[0]+a[1]+a[2]; }" 6
+run_case "int main(){ int a[2][3]; int s; int i; int j; s=0; for(i=0;i<2;i=i+1){ for(j=0;j<3;j=j+1){ a[i][j]=i*10+j; } } return a[1][2]+a[0][2]; }" 14
+run_case "int main(){ char c[4]; c[0]=65; c[1]=66; return c[0]+c[1]; }" 131
+run_case "int main(){ char c[2][2]; c[0][1]=65; c[1][0]=66; return c[0][1]+c[1][0]; }" 131
+run_case "int sum(int *p,int n){ int i; int s; s=0; i=0; while(i<n){ s=s+p[i]; i=i+1; } return s; } int main(){ int a[3]; a[0]=1; a[1]=2; a[2]=3; return sum(a,3); }" 6
+run_case "int main(){ int a[4]; return sizeof(a); }" 16
+run_case "int main(){ int a[2][2]; a[0][0]=1; a[0][1]=2; a[1][0]=3; a[1][1]=4; return a[0][1]*10+a[1][0]; }" 23
+run_case "int f(int *p){ return p[0]+p[1]; } int main(){ int a[2]; a[0]=7; a[1]=8; return f(a); }" 15
+run_case "int main(){ int a[3]; a[0]=5; int *p; p=a; return p[0]; }" 5
+
+echo "== P4-II T6/T7 错误用例 =="
+run_err "struct P { int x; }; int main(){ struct P s; return s.y; }" 2
 
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
