@@ -22,11 +22,11 @@
 > 实验与环境基线见 [docs/design/experiment-baseline.md](docs/design/experiment-baseline.md)。
 >
 > **2026-08-25 无蛋引导**：用户决策"彻底无蛋"——pggcc 不再依赖任何 C/C++ 编译器作为构建蛋，
-> 编译器本体由**手写 i386 汇编**（stage-0，无 libc）经 `as`/`ld` 直接构建；环境内 gcc 已卸载。
+> 编译器本体由**AI编写 i386 汇编**（stage-0，无 libc）经 `as`/`ld` 直接构建；环境内 gcc 已卸载。
 > v0 无蛋架构评审见 [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md)。
 >
 > **2026-08-26 自举成功**：B2 自举支线（B2a–g）完成——用 pggcc 语言书写的编译器本体 `src/boot0.pgc`
-> 经手写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（258KB .s），
+> 经AI写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（258KB .s），
 > 二次自举产物行为一致、再编回稳（B3 阶段条件达成）。**2026-08-26 B4 煮蛋闭台验证通过**：
 > `bin0→bin1→bin2` 逐字节固定点（259267B .s / 二进制一致）、三头行为矩阵 24/24、
 > pg_quiet 语义回归 3/3（详见 [docs/logs/2026-08-26.md](docs/logs/2026-08-26.md)）。
@@ -70,7 +70,7 @@
 
 `
 pgg-gcc/
-├── src/          # 编译器源码（pggcc0–4.s 手写汇编 stage；boot0.pgc 自举编译器源码）
+├── src/          # 编译器源码（pggcc0–4.s AI汇编 stage；boot0.pgc 自举编译器源码）
 ├── tests/        # 测试用例与自证管线（run.sh 主链 / run_boot.sh 自举支线）
 ├── docs/         # 设计文档与笔记
 ├── ORIGIN.md     # 实现来源声明（证明不抄袭 GCC）

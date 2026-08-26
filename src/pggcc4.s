@@ -151,7 +151,7 @@
 .equ MAX_FUNC,    64            # 函数数上限（含 3 个运行时内建；E3：B2d 起 boot0 函数 >32）
 .equ MAX_BLK,     64            # 块嵌套深度上限
 .equ MAX_GLB,     256           # 全局符号数上限（E4：B2f 起 boot0 全局 =64，astp 恰第 64 个越界；E6：P4-II boot0 全局 131，T_* 常量行 56 个命名常量也计全局）
-.equ MAX_STR,     1024          # 字符串字面量常量表上限（每条 ≤256B；E2：B2d 起 boot0 模板字面量 >64 条；E5：B5 面扩张 wpf 起 136 唯一条、含 peek/回放重复词法 ~1.9× 实入 257 次 >256；E7：P4-II T6/T7 boot0 本体 print_str 调用 165→265、实入计次 ~500 次 → 512 截断，pgquiet 段字面量登记点 Lsyn_err）
+.equ MAX_STR,     4096          # 字符串字面量常量表上限（每条 ≤256B；E8：P4-II 剩余特性 boot0 新增 &/struct数组/3D/-> 等分支大量 print_str，重放登记量逼近 1024 上限）
 .equ MAX_LOOP,    64            # 循环嵌套深度上限
 
 .section .rodata
@@ -276,7 +276,7 @@ s_runtime:  .asciz "f_print_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl 
 
 # ---- 编译器自身工作内存（.bss） ----
 .section .bss
-in_buf:      .space 65537        # B2 前置：源码读入上限 4096→65536（boot0.pgc 超 4KB）
+in_buf:      .space 131073       # B2 前置：源码读入上限 4096→65536（boot0.pgc 超 4KB）；E9：P4-II 剩余特性 boot0.pgc 增至 66KB+，截断引发字符串"未闭合"误报 → 上限 65536→131072
 input_start: .long 0
 tok_kind:    .long 0
 tok_ival:    .long 0
@@ -355,7 +355,7 @@ _start:
     movl $3, %eax
     xorl %ebx, %ebx
     leal in_buf, %ecx
-    movl $65536, %edx
+    movl $131072, %edx
     int $0x80
     testl %eax, %eax
     js .Lrd_bad

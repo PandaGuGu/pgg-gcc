@@ -277,6 +277,37 @@ run_case "int main(){ int a[3]; a[0]=5; int *p; p=a; return p[0]; }" 5
 echo "== P4-II T6/T7 错误用例 =="
 run_err "struct P { int x; }; int main(){ struct P s; return s.y; }" 2
 
+echo "== P4-II 剩余限制：匿名嵌套 struct =="
+run_case "struct { int x; struct { int y; } s; } v; int main(){ v.x=1; v.s.y=2; return v.x+v.s.y; }" 3
+run_case "struct S { struct { int a; int b; } in; int c; }; int main(){ struct S s; s.in.a=1; s.in.b=2; s.c=3; return s.in.a*100+s.in.b*10+s.c; }" 123
+
+echo "== P4-II 剩余限制：struct 数组 / 参数 / 初始化 =="
+run_case "struct P { int x; int y; }; struct P a[2] = { {3,4}, {5,6} }; int main(){ return a[0].x*100+a[0].y*10+a[1].x; }" 345
+run_case "struct P { int x; }; struct P g = {7}; int main(){ return g.x; }" 7
+run_case "int ia[3] = {9,10,11}; int main(){ return ia[0]+ia[2]; }" 20
+run_case "char cb[3] = {65,66,67}; int main(){ return cb[0]+cb[1]+cb[2]; }" 198
+run_case "struct P { int x; int y; }; int main(){ struct P arr[2]; arr[0].x=3; arr[0].y=4; arr[1].x=5; arr[1].y=6; return arr[1].x*10+arr[0].y; }" 54
+run_case "struct P { int x; }; int f(struct P s){ return s.x; } int main(){ struct P a; a.x=5; return f(a); }" 5
+run_case "struct P { int x; int y; }; int f(struct P s){ return s.x*10+s.y; } int main(){ struct P a; a.x=3; a.y=4; return f(a); }" 34
+run_case "struct P { int x; }; struct P g; int f(struct P s){ return s.x+1; } int main(){ g.x=6; return f(g); }" 7
+
+echo "== P4-II 剩余限制：&a[i] / &s.m / 声明符括号 / -> =="
+run_case "int a[3]; struct { int m; } s; int main(){ a[0]=5; s.m=6; return *&a[0] + *&s.m; }" 11
+run_case "int main(){ int a[3]; a[1]=7; int *p; p=&a[1]; return *p; }" 7
+run_case "struct P { int x; int y; }; int main(){ struct P s; s.x=9; int *p; p=&s.x; return *p+1; }" 10
+run_case "int (*p)[3]; int a[3] = {9,10,11}; int main(){ p=&a; return (*p)[1]; }" 10
+run_case "struct P { int x; int y; }; int main(){ struct P s; struct P *p; s.x=5; s.y=7; p=&s; return p->x+p->y; }" 12
+run_case "struct P { int x; }; int main(){ struct P s; struct P *p; s.x=0; p=&s; p->x=9; return s.x; }" 9
+run_case "struct P { int a; int b; }; struct P g; int main(){ g.a=3; g.b=4; struct P *p; p=&g; return p->a*p->b; }" 12
+run_case "struct C { char c; int i; }; int main(){ struct C s; struct C *p; s.c=65; s.i=7; p=&s; return p->c+p->i; }" 72
+
+echo "== P4-II 剩余限制：三维数组（局部/全局/int/char/初始化） =="
+run_case "int a[2][2][2]; int main(){ a[1][1][1]=5; a[0][0][0]=2; return a[1][1][1]+a[0][0][0]; }" 7
+run_case "int ga[2][2][2] = { {1,2}, {3,4}, {5,6}, {7,8} }; int main(){ return ga[1][1][1]; }" 8
+run_case "int main(){ int a[2][2][2]; a[0][1][1]=5; a[1][0][1]=3; return a[0][1][1]-a[1][0][1]; }" 2
+run_case "int main(){ int a[2][3][2]; a[1][2][1]=7; int *p; p=a; return a[1][2][1]; }" 7
+run_case "int ca[2][2][2]; int main(){ ca[1][0][1]=65; return ca[1][0][1]; }" 65
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
