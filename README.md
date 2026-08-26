@@ -27,7 +27,10 @@
 >
 > **2026-08-26 自举成功**：B2 自举支线（B2a–g）完成——用 pggcc 语言书写的编译器本体 `src/boot0.pgc`
 > 经手写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（258KB .s），
-> 二次自举产物行为一致、再编回稳（B3 阶段条件达成）。方案与执行结果见
+> 二次自举产物行为一致、再编回稳（B3 阶段条件达成）。**2026-08-26 B4 煮蛋闭台验证通过**：
+> `bin0→bin1→bin2` 逐字节固定点（259267B .s / 二进制一致）、三头行为矩阵 24/24、
+> pg_quiet 语义回归 3/3（详见 [docs/logs/2026-08-26.md](docs/logs/2026-08-26.md)）。
+> 方案与执行结果见
 > [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md)。
 
 - 许可证：MIT
@@ -46,6 +49,7 @@
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
 | [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
 | [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **90/90** |
+| [tests/boot_b4.sh](tests/boot_b4.sh) | **B4 煮蛋闭台门**：bin0→bin1→bin2 逐字节固定点 ＋ 三头行为矩阵 ＋ pg_quiet 语义回归；**已全门通过（2026-08-26）** |
 
 ## 路线图
 
@@ -56,7 +60,7 @@
 | v2（P2） | ✅ v2 完成（11/11 自证通过） | 函数定义与调用（`int` 函数/参数表/`return`；cdecl 实参从右到左压栈；`main` 入口打印返回值；函数级作用域；细则见 plan §4.2） |
 | v3（P3） | ✅ v3 完成（15/15 自证通过） | 控制流：if/while/for、比较、块作用域（递归自证 fact(5)==120 → 语言图灵完备，B0 硬门槛达成；细则见 plan §4.3） |
 | v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**） |
-| B2（自举支线） | ✅ B2a–g 完成，**自举成功**（90/90） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**（258KB .s），二次自举产物行为一致 → **B3 阶段条件达成**；下一步 B4 闭台煮蛋验证、B5 切自举链（见 architecture-b2 §8） |
+| B2（自举支线） | ✅ B2a–g 完成，**自举成功**（90/90）；**B4 闭台通过、B5 已启用**（2026-08-26） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**（258KB .s）→ **B3 达成**；**B4 煮蛋闭台通过**（bin0→bin1→bin2 逐字节固定点，tests/boot_b4.sh）；**B5 日常开发已切到自举链**（改 boot0.pgc → bin1 编 → run_boot 90 门；pggcc4 冻结为跨链参照；操作约定见 architecture-b2 §8.1） |
 | v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集），B5 起在自举链上继续 |
 | C++ | 📋 待办（backlog） | 待 C 系列成熟后启动：从 C++98 起实现（类、重载、模板…），IR/代码生成复用 C 侧 |
 
@@ -116,7 +120,7 @@ bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译
   本仓库与 WSL 环境现已**无任何 C/C++ 编译器**；黑盒产物（如 gcc295）重建须用户显式放行 + 日志留痕。
 - **不读源码**：不阅读、复制、逐行移植 GCC 及其他编译器源码；仅依据公开语言标准（ISO 9899/14882）与
   通用编译原理。源码树与源码包不得留存于实验环境。
-- **实现形态**：编译器本体为**手写 i386 汇编**（无 libc/crt，见基线 §6），构建链仅 `as`/`ld`
+- **实现形态**：编译器本体为**手写（AI） i386 汇编**（无 libc/crt，见基线 §6），构建链仅 `as`/`ld`
   （助记符→二进制的机械翻译器，可用）；不得擅自改回"用 gcc 构建"。
 - **开工前必读**：先读 [plan-language-features.md](docs/design/plan-language-features.md) §4（本阶段细则）
   与 [architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) §7（接口定标）再动手；

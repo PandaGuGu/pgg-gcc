@@ -9,7 +9,11 @@
    ns semicolon-strictness flag (if/while/for/block skip ';' requirement, else/return/decl/do/break/continue strict),
    for-loop incf empty-inc + body-token save/restore (bpos/btk/btp/btl) for inc-after-body replay,
    fi reverse search (shadow wins), bstk/blok block-base stack, pd same-scope collision check only.
-   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.2.1/6.3/6.6 */
+   without any C/C++ compiler reference; ISO 9899:1990 6.1/6.2.1/6.3/6.6
+   B4 find (2026-08-26): eh() pg_quiet gate was on print_decimal only, trailing newline
+   (movl $10/call print_char) emitted unconditionally -> boot0-built targets printed 1 stray
+   "\n" even with pg_quiet=1 (pggcc4 v4.1 spec: skip value AND newline); fixed by gating
+   newline alongside print_decimal -> bin0/bin1/bin2 self-compile outputs byte-identical. */
 int pg_quiet=1;
 char src_buf[65536];
 int src_len;
@@ -584,9 +588,9 @@ if(gsl>=0 && gsb>=0){
  print_str("    movl $3, %eax\n    xorl %ebx, %ebx\n    leal g"); print_int(gsb); print_str(", %ecx\n    movl $"); print_int(gn[gsb]); print_str(", %edx\n    int $0x80\n    movl %eax, g"); print_int(gsl); print_str("\nL"); print_int(q); print_str(":\n");
 }
 print_str("    call f"); print_int(mn); print_str("\n");
-if(gpq<0){ print_str("    call print_decimal\n"); }
-if(gpq>=0 && gpqv==0){ print_str("    call print_decimal\n"); }
-print_str("    movl $10, %eax\n    call print_char\n    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n\nprint_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n");
+if(gpq<0){ print_str("    call print_decimal\n"); print_str("    movl $10, %eax\n    call print_char\n"); }
+if(gpq>=0 && gpqv==0){ print_str("    call print_decimal\n"); print_str("    movl $10, %eax\n    call print_char\n"); }
+print_str("    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n\nprint_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n");
 print_str("    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpd_loop:\n");
 print_str("    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n");
 print_str("    leal runt_buf+15, %edx\n    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\nprint_char:\n");
