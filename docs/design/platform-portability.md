@@ -205,6 +205,19 @@ bin0（x86）直接产出目标 ISA 汇编，用目标平台的 binutils 汇编/
 > 全局符号寻址 `g%d(%rip)` RIP 相对 vs 32 位绝对（P2-a 冒烟先用绝对寻址或登记局限）；.s 逐字节
 > 比对仅在同目标内有意义（跨目标语义等价由 P3 行为矩阵覆盖）。
 
+> **P2-a 完成（2026-08-26）**：g_am 全局（0=i386/1=amd64）＋64 位渲染链路全通——
+> - **操作码**：irgo 的 OP_PUSHI/PUSHL/STORE/JZ/JNZ/BINOP/CMP 按 g_am 分支 64 位
+>   （pushq/cmpq/addq/sqsubq/imulq/cqto+idivq/movzbq、%rax/%rcx/%rbp）。
+> - **运行时模板**：eh() 64 位分支——_start/print_decimal/print_char/print_str/print_err/exit/
+>   print_int 全 syscall 化（号 read 0/write 1/exit 60；参数 %rdi/%rsi/%rdx；divq/cqto/movslq）。
+> - **调用/栈帧**：调用序列 leaq str＋pushq＋movq (%rsp),%rax＋addq $8n；参数槽 16+p*8；局部槽
+>   0-(locn*8)、subq $8；pfun 序言尾声、p_k return 64 位。
+> - **门控**：tests/run_amd.sh **9/9**（常量/算术/调用/递归/print_int/print_str/局部/负数，
+>   as --64→ld→本机原生运行）；x86 链零变化（run_boot 232/232、boot_b4 闭台全门、run.sh 72/72）。
+> - **已知局限（P2-b 处理）**：argv[1]→g_am 运行时接线未做（现用 sed 临时变体验证）；透传文本
+>   （数组寻址/struct 链/全局寻址/数据段）AMD64 化未做——冒烟用例避开了这些面。
+> - 下一步 P2-b：透传句柄语义化为新操作码→IR 全覆盖→AMD64 渲染器只按操作码翻译（P3 前置）。
+
 ## 6. 决策记录（Q1–Q5，2026-08-26 用户拍板）
 
 - **Q1 路线**：✅ **路线 A（多后端 + 交叉自举）**——保持无蛋红线，新增第二代码生成后端。

@@ -78,7 +78,18 @@
    语义化——OP_BINOP/OP_CMP 操作码（参数=operator token），irgo 渲染器内按 token 分发展码
    文本（与首轮同构）。至此发码层全部运算与跳转/存储/压栈/标签指令均为操作码+参数，仅
    复杂寻址/数据段/运行时模板文本保留值流透传。i386 输出不变（门控：run_boot 232 + boot_b4
-   闭台不破）。 */
+   闭台不破）。
+   P2-a 第一块 (2026-08-26, chain): g_am 全局（0=i386/1=amd64）＋64 位操作码渲染骨架——
+   irgo 的 OP_PUSHI/PUSHL/STORE/JZ/JNZ/BINOP/CMP 按 g_am 分支输出 64 位（pushq/cmpq/addq/
+   cqto+idivq/movzbq/%rax/%rcx/%rbp）；pfun 序言尾声、p_k return 推广 64 位分支。g_am=0
+   时 i386 输出逐字节不变（三线全绿：run_boot 232 + boot_b4 闭台 + run.sh 72）。待续：
+   eh() 运行时模板 64 位（_start/print_* syscall）、argv[1]→g_am 接线、透传文本 AMD64 化。
+   P2-a 完成 (2026-08-26, chain): 64 位运行时模板（_start/print_decimal/print_char/print_str/
+   print_err/exit/print_int 全 syscall 化：号 read 0/write 1/exit 60、参数 %rdi/%rsi/%rdx、
+   divq/cqto/movslq/movzbq）；调用序列（leaq str/pushq/movq (%rsp),%rax/addq $8n）；参数槽
+   16+p*8；局部槽 0-(locn*8) 且 subq $8；tests/run_amd.sh 9/9（常量/算术/调用/递归/print_int/
+   print_str/局部/负数，as --64→ld→本机原生运行）。i386 链零变化。待续：argv 接线、透传
+   文本（数组寻址/struct/全局寻址）AMD64 化（P2-b 与 IR 全覆盖合并）。 */
 int pg_quiet=1;
 char src_buf[131072];
 int src_len;
@@ -189,6 +200,7 @@ int OP_JZ=6;
 int OP_JNZ=7;
 int OP_JMP=8;
 int OP_LBL=9;
+int g_am=0;
 int wd(int at,int n){ if(n/10!=0){ at=wd(at,n/10); } eb[at]='0'+(n-(n/10)*10); return at+1; }
 void ml(){ int i,j,k; i=0;
 eb[0]='e'; eb[1]='r'; eb[2]='r'; eb[3]='o'; eb[4]='r'; eb[5]=':'; eb[6]=' '; i=7;
@@ -207,38 +219,66 @@ while(i<irc){
  if(irt[i]==0){ print_str(irv[i]); i=i+1; }
  else if(irt[i]==2){ op=irv[i]; a=0; i=i+1;
   if(i<irc){ if(irt[i]==1){ a=irv[i]; i=i+1; } }
-  if(op==OP_PUSHI){ print_str("    pushl $"); print_int(a); print_str("\n"); }
-  else if(op==OP_PUSHL){ print_str("    pushl "); print_int(a); print_str("(%ebp)\n"); }
-  else if(op==OP_STORE){ print_str("    popl %eax\n    movl %eax, "); print_int(a); print_str("(%ebp)\n    pushl %eax\n"); }
-  else if(op==OP_JZ){ print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); print_int(a); print_str("\n"); }
-  else if(op==OP_JNZ){ print_str("    popl %eax\n    testl %eax, %eax\n    jnz L"); print_int(a); print_str("\n"); }
+  if(op==OP_PUSHI){ if(g_am==1){ print_str("    pushq $"); print_int(a); print_str("\n"); } else { print_str("    pushl $"); print_int(a); print_str("\n"); } }
+  else if(op==OP_PUSHL){ if(g_am==1){ print_str("    pushq "); print_int(a); print_str("(%rbp)\n"); } else { print_str("    pushl "); print_int(a); print_str("(%ebp)\n"); } }
+  else if(op==OP_STORE){ if(g_am==1){ print_str("    popq %rax\n    movq %rax, "); print_int(a); print_str("(%rbp)\n    pushq %rax\n"); } else { print_str("    popl %eax\n    movl %eax, "); print_int(a); print_str("(%ebp)\n    pushl %eax\n"); } }
+  else if(op==OP_JZ){ if(g_am==1){ print_str("    popq %rax\n    testq %rax, %rax\n    jz L"); print_int(a); print_str("\n"); } else { print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); print_int(a); print_str("\n"); } }
+  else if(op==OP_JNZ){ if(g_am==1){ print_str("    popq %rax\n    testq %rax, %rax\n    jnz L"); print_int(a); print_str("\n"); } else { print_str("    popl %eax\n    testl %eax, %eax\n    jnz L"); print_int(a); print_str("\n"); } }
   else if(op==OP_JMP){ print_str("    jmp L"); print_int(a); print_str("\n"); }
   else if(op==OP_LBL){ print_str("L"); print_int(a); print_str(":\n"); }
   else if(op==OP_BINOP){
-   if(a==T_PLUS){ print_str("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
-   else if(a==T_PERCENT){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %edx\n"); }
-   else if(a==T_BAND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_BOR){ print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_XOR){ print_str("    popl %ecx\n    popl %eax\n    xorl %ecx, %eax\n    pushl %eax\n"); }
-   else if(a==T_SHL){ print_str("    popl %ecx\n    popl %eax\n    shll %cl, %eax\n    pushl %eax\n"); }
-   else if(a==T_SHR){ print_str("    popl %ecx\n    popl %eax\n    shrl %cl, %eax\n    pushl %eax\n"); }
-   else if(a==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
-   else if(a==T_NOT){ print_str("    popl %eax\n    testl %eax, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else if(a==T_TILDE){ print_str("    popl %eax\n    notl %eax\n    pushl %eax\n"); }
-   else if(a==T_DEREF){ print_str("    popl %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
-   else if(a==T_AND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else { print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   if(g_am==1){
+    if(a==T_PLUS){ print_str("    popq %rcx\n    popq %rax\n    addq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_MINUS){ print_str("    popq %rcx\n    popq %rax\n    subq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_STAR){ print_str("    popq %rcx\n    popq %rax\n    imulq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_SLASH){ print_str("    popq %rcx\n    popq %rax\n    cqto\n    idivq %rcx\n    pushq %rax\n"); }
+    else if(a==T_PERCENT){ print_str("    popq %rcx\n    popq %rax\n    cqto\n    idivq %rcx\n    pushq %rdx\n"); }
+    else if(a==T_BAND){ print_str("    popq %rcx\n    popq %rax\n    andq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_BOR){ print_str("    popq %rcx\n    popq %rax\n    orq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_XOR){ print_str("    popq %rcx\n    popq %rax\n    xorq %rcx, %rax\n    pushq %rax\n"); }
+    else if(a==T_SHL){ print_str("    popq %rcx\n    popq %rax\n    shlq %cl, %rax\n    pushq %rax\n"); }
+    else if(a==T_SHR){ print_str("    popq %rcx\n    popq %rax\n    shrq %cl, %rax\n    pushq %rax\n"); }
+    else if(a==T_UN){ print_str("    popq %rax\n    negq %rax\n    pushq %rax\n"); }
+    else if(a==T_NOT){ print_str("    popq %rax\n    testq %rax, %rax\n    sete %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else if(a==T_TILDE){ print_str("    popq %rax\n    notq %rax\n    pushq %rax\n"); }
+    else if(a==T_DEREF){ print_str("    popq %rax\n    movq (%rax), %rax\n    pushq %rax\n"); }
+    else if(a==T_AND){ print_str("    popq %rcx\n    popq %rax\n    andq %rcx, %rax\n    testq %rax, %rax\n    setne %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else { print_str("    popq %rcx\n    popq %rax\n    orq %rcx, %rax\n    testq %rax, %rax\n    setne %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+   } else {
+    if(a==T_PLUS){ print_str("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
+    else if(a==T_PERCENT){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %edx\n"); }
+    else if(a==T_BAND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_BOR){ print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_XOR){ print_str("    popl %ecx\n    popl %eax\n    xorl %ecx, %eax\n    pushl %eax\n"); }
+    else if(a==T_SHL){ print_str("    popl %ecx\n    popl %eax\n    shll %cl, %eax\n    pushl %eax\n"); }
+    else if(a==T_SHR){ print_str("    popl %ecx\n    popl %eax\n    shrl %cl, %eax\n    pushl %eax\n"); }
+    else if(a==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
+    else if(a==T_NOT){ print_str("    popl %eax\n    testl %eax, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else if(a==T_TILDE){ print_str("    popl %eax\n    notl %eax\n    pushl %eax\n"); }
+    else if(a==T_DEREF){ print_str("    popl %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
+    else if(a==T_AND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else { print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   }
   }
   else if(op==OP_CMP){
-   if(a==T_EQ){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else if(a==T_NE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else if(a==T_LT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setl %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else if(a==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setle %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else if(a==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-   else { print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   if(g_am==1){
+    if(a==T_EQ){ print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    sete %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else if(a==T_NE){ print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    setne %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else if(a==T_LT){ print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    setl %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else if(a==T_LE){ print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    setle %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else if(a==T_GT){ print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    setg %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+    else { print_str("    popq %rcx\n    popq %rax\n    cmpq %rcx, %rax\n    setge %al\n    movzbq %al, %rax\n    pushq %rax\n"); }
+   } else {
+    if(a==T_EQ){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else if(a==T_NE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else if(a==T_LT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setl %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else if(a==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setle %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else if(a==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+    else { print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   }
   }
  }
  else { print_int(irv[i]); i=i+1; }
@@ -419,7 +459,10 @@ void e_expr(){ int s; int sp; int stp; int stl; int q; int i; int j; int d; int 
 while(1){
 if(tk==T_NUM){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
 else if(tk==T_CHR){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
-else if(tk==T_STR){ if(aw==0){ se(); } ostr("    leal str"); oint(tv); ostr(", %eax\n    pushl %eax\n"); aw=0; nx(); }
+else if(tk==T_STR){ if(aw==0){ se(); }
+ if(g_am==1){ ostr("    leaq str"); oint(tv); ostr(", %rax\n    pushq %rax\n"); }
+ else { ostr("    leal str"); oint(tv); ostr(", %eax\n    pushl %eax\n"); }
+ aw=0; nx(); }
 else if(tk==T_ID){ if(aw==0){ se(); }
  sp=pos; stp=tp; stl=tl;
  nx();
@@ -442,10 +485,10 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    else { if(n==0){ n=1; argp[0]=pos; } pos=pos+1; } }
   if(n>0){ j=n-1;
    while(j>=0){ pos=argp[j]; nx(); aw=1; opn=0; ar=ar+1; e_expr(); ar=ar-1; j=j-1; } }
-  if(i<4){ ostr("    movl (%esp), %eax\n"); if(i==0){ ostr("    call print_str\n"); } if(i==1){ ostr("    call print_int\n"); } if(i==2){ ostr("    call print_err\n"); } if(i==3){ ostr("    call exit\n"); } }
+  if(i<4){ if(g_am==1){ ostr("    movq (%rsp), %rax\n"); } else { ostr("    movl (%esp), %eax\n"); } if(i==0){ ostr("    call print_str\n"); } if(i==1){ ostr("    call print_int\n"); } if(i==2){ ostr("    call print_err\n"); } if(i==3){ ostr("    call exit\n"); } }
   else { ostr("    call f"); oint(i); ostr("\n"); }
-  ostr("    addl $"); oint(n*4); ostr(", %esp\n");
-  ostr("    pushl %eax\n");
+  if(g_am==1){ ostr("    addq $"); oint(n*8); ostr(", %rsp\n"); ostr("    pushq %rax\n"); }
+  else { ostr("    addl $"); oint(n*4); ostr(", %esp\n"); ostr("    pushl %eax\n"); }
   opn=q; aw=0;
   pos=endp; nx();
   astp=astp-57; endp=ast[astp+56];
@@ -1309,10 +1352,10 @@ while(1){
   so_sz[sc]=n1;
  }
  locn=locn+n1;
- so[sc]=0-(locn*4);
+ if(g_am==1){ so[sc]=0-(locn*8); } else { so[sc]=0-(locn*4); }
  sc=sc+1;
- if(n1==1){ ostr("    subl $4, %esp\n"); }
- else { ostr("    subl $"); oint(n1*4); ostr(", %esp\n"); }
+ if(n1==1){ if(g_am==1){ ostr("    subq $8, %rsp\n"); } else { ostr("    subl $4, %esp\n"); } }
+ else { if(g_am==1){ ostr("    subq $"); oint(n1*8); ostr(", %rsp\n"); } else { ostr("    subl $"); oint(n1*4); ostr(", %esp\n"); } }
  /* 局部初始化器（当前变量槽=sc-1）：标量表达式 / 一维数组 {..} / char 数组字符串 */
  if(tk==T_ASSIGN){
   nx();
@@ -1348,7 +1391,7 @@ while(1){
 void p_k(){
 nx();
 if(tk==T_SEMI){ ostr("    jmp .Lr"); oint(la); ostr("\n"); }
-else { aw=1; opn=0; p_cmp(); ostr("    popl %eax\n    jmp .Lr"); oint(la); ostr("\n"); }
+else { aw=1; opn=0; p_cmp(); if(g_am==1){ ostr("    popq %rax\n    jmp .Lr"); } else { ostr("    popl %eax\n    jmp .Lr"); } oint(la); ostr("\n"); }
 }
 void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp; int btl; int ns; int sp; int stp; int stl; int k; int i; int j; int n2; int m2; int e3; int f3; int o3; int tot;
 aw=1; opn=0;
@@ -1623,7 +1666,8 @@ fnp[fsc]=0;
 if(tl==4){ if(nm[0]=='m'){ if(nm[1]=='a'){ if(nm[2]=='i'){ if(nm[3]=='n'){ mn=fsc; } } } } }
 wpf("f", fsc);
 ostr(":\n");
-ostr("    pushl %ebp\n    movl %esp, %ebp\n");
+if(g_am==1){ ostr("    pushq %rbp\n    movq %rsp, %rbp\n"); }
+else { ostr("    pushl %ebp\n    movl %esp, %ebp\n"); }
 la=lc; lc=lc+1;
 fsc=fsc+1;
 sc=0;
@@ -1644,7 +1688,7 @@ while(tk!=T_RPAREN){
   if(tk!=T_ID){ se(); }
   pb=0; while(pb<tl){ sn[sc*16+pb]=nm[pb]; pb=pb+1; }
   sn[sc*16+tl]=0;
-  so[sc]=8+p*4;
+  if(g_am==1){ so[sc]=16+p*8; } else { so[sc]=8+p*4; }
   so_t[sc]=0;
   so_p[sc]=pp;
   so_sz[sc]=0; so_st[sc]=0; so_par[sc]=0; so_p2[sc]=0; so_pst[sc]=0; so_rp[sc]=0;
@@ -1666,9 +1710,9 @@ while(tk!=T_RPAREN){
  if(tk!=T_ID){ se(); }
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
  sn[sc*16+tl]=0;
- so[sc]=8+p*4;
- so_t[sc]=pb;
- so_p[sc]=pp;
+ if(g_am==1){ so[sc]=16+p*8; } else { so[sc]=8+p*4; }
+  so_t[sc]=pb;
+  so_p[sc]=pp;
  so_sz[sc]=0; so_st[sc]=0; so_par[sc]=0; so_p2[sc]=0; so_pst[sc]=0; so_rp[sc]=0;
  sc=sc+1;
  p=p+1;
@@ -1683,7 +1727,8 @@ bstk[0]=0; blok[0]=0; bd=0;
 locn=0;
 floop();
 if(tk!=T_RBRACE){ se(); }
-ostr("    xorl %eax, %eax\n    jmp .Lr"); oint(la); ostr("\n.Lr"); oint(la); ostr(":\n    movl %ebp, %esp\n    popl %ebp\n    ret\n");
+if(g_am==1){ ostr("    xorl %eax, %eax\n    jmp .Lr"); oint(la); ostr("\n.Lr"); oint(la); ostr(":\n    movq %rbp, %rsp\n    popq %rbp\n    ret\n"); }
+else { ostr("    xorl %eax, %eax\n    jmp .Lr"); oint(la); ostr("\n.Lr"); oint(la); ostr(":\n    movl %ebp, %esp\n    popl %ebp\n    ret\n"); }
 nx();
 }
 void pgbss(int kg){
@@ -2030,6 +2075,7 @@ while(tk!=T_END){
 } }
 void eh(){ int q; int i; int j;
 q=lc; lc=lc+2;
+if(g_am==0){
 ostr(".section .text\n.globl _start\n_start:\n");
 if(gsl>=0 && gsb>=0){
  ostr("    movl g"); oint(gsl); ostr(", %eax\n    testl %eax, %eax\n    jnz L"); oint(q); ostr("\n");
@@ -2053,6 +2099,27 @@ ostr("    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpi_pos:\n    mo
 ostr("    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $48, %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n");
 ostr("    jnz .Lpi_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n    leal runt_buf+15, %edx\n");
 ostr("    subl %esi, %edx\n    int $0x80\n    popl %edi\n    popl %esi\n    popl %edx\n    popl %ecx\n    popl %ebx\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
+} else {
+ostr(".section .text\n.globl _start\n_start:\n");
+ostr("    call f"); oint(mn); ostr("\n");
+if(gpq<0){ ostr("    call print_decimal\n"); ostr("    movl $10, %eax\n    call print_char\n"); }
+if(gpq>=0 && gpqv==0){ ostr("    call print_decimal\n"); ostr("    movl $10, %eax\n    call print_char\n"); }
+ostr("    movl $60, %eax\n    xorl %edi, %edi\n    syscall\n\nprint_decimal:\n    pushq %rbx\n    pushq %rcx\n    pushq %rdx\n    pushq %rsi\n    pushq %rdi\n");
+ostr("    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leaq runt_buf+15, %rsi\n    movb $0, (%rsi)\n.Lpd_loop:\n");
+ostr("    movslq %edi, %rax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divq %rbx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%rsi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $1, %eax\n    movl $1, %edi\n    movq %rsi, %rsi\n");
+ostr("    leaq runt_buf+15, %rdx\n    subq %rsi, %rdx\n    syscall\n    popq %rdi\n    popq %rsi\n    popq %rdx\n    popq %rcx\n    popq %rbx\n    ret\n\nprint_char:\n");
+ostr("    pushq %rdi\n    pushq %rsi\n    pushq %rdx\n    leaq runt_cbuf, %rsi\n    movb %al, (%rsi)\n    movl $1, %edx\n    movl $1, %eax\n    movl $1, %edi\n    syscall\n    popq %rdx\n    popq %rsi\n    popq %rdi\n    ret\n\nprint_str:\n");
+ostr("    pushq %rsi\n    pushq %rdx\n    pushq %rcx\n    movq %rax, %rsi\n    xorl %edx, %edx\n.Lps_loop:\n    cmpb $0, (%rsi,%rdx)\n    jz .Lps_got\n    incl %edx\n    jmp .Lps_loop\n.Lps_got:\n");
+ostr("    movl $1, %eax\n    movl $1, %edi\n    syscall\n    popq %rcx\n    popq %rdx\n    popq %rsi\n    ret\n\nprint_err:\n");
+ostr("    pushq %rsi\n    pushq %rdx\n    pushq %rcx\n    movq %rax, %rsi\n    xorl %edx, %edx\n.Lpe_loop:\n    cmpb $0, (%rsi,%rdx)\n    jz .Lpe_got\n    incl %edx\n    jmp .Lpe_loop\n.Lpe_got:\n");
+ostr("    movl $1, %eax\n    movl $2, %edi\n    syscall\n    popq %rcx\n    popq %rdx\n    popq %rsi\n    ret\n");
+ostr("\nexit:\n    movl %eax, %edi\n    movl $60, %eax\n    syscall\n\nprint_int:\n");
+ostr("    pushq %rbx\n    pushq %rcx\n    pushq %rdx\n    pushq %rsi\n    pushq %rdi\n    test %eax, %eax\n    jns .Lpi_pos\n    movl %eax, %esi\n    movl $45, %eax\n");
+ostr("    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpi_pos:\n    movl %eax, %edi\n    leaq runt_buf+15, %rsi\n    movb $0, (%rsi)\n.Lpi_loop:\n");
+ostr("    movslq %edi, %rax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divq %rbx\n    movl %eax, %edi\n    addb $48, %dl\n    decl %esi\n    movb %dl, (%rsi)\n    test %edi, %edi\n");
+ostr("    jnz .Lpi_loop\n    movl $1, %eax\n    movl $1, %edi\n    movq %rsi, %rsi\n    leaq runt_buf+15, %rdx\n");
+ostr("    subq %rsi, %rdx\n    syscall\n    popq %rdi\n    popq %rsi\n    popq %rdx\n    popq %rcx\n    popq %rbx\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
+}
 if(stc>0){ sro(); }
 }
 void et(){ }
