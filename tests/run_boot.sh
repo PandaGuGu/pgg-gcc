@@ -327,6 +327,36 @@ run_err "int main(){ break; return 0; }" 2
 run_err "int main(){ continue; return 0; }" 2
 run_err "int main(){ int i; i=0; do { i=i+1; } while(0) }" 2
 
+echo "== P4-II 收口（2026-08-26）：& 三维/全局下标取址 =="
+run_case "int ga[2][2][2]; int main(){ ga[0][0][0]=3; ga[1][1][1]=4; return *&ga[1][1][1]+ga[0][0][0]; }" 7
+run_case "int main(){ int a[2][2][2]; a[0][1][1]=6; int *p; p=&a[0][1][1]; return *p; }" 6
+run_case "int ga[2][2]; int main(){ ga[1][1]=9; return *&ga[1][1]; }" 9
+
+echo "== P4-II 收口：后缀 [i] 写（数组指针 (*p)[i]=v，局部/全局） =="
+run_case "int (*p)[3]; int a[3]; int main(){ p=&a; (*p)[2]=77; return a[2]; }" 77
+run_case "int main(){ int a[2]; int (*p)[2]; p=&a; (*p)[1]=55; return a[1]; }" 55
+
+echo "== P4-II 收口：struct 数组传参（元素 by-ref / 整体数组指针 / 指针下标 p[i].m） =="
+run_case "struct P { int x; int y; }; struct P ga[2]; int f(struct P s){ return s.x*10+s.y; } int main(){ ga[0].x=3; ga[0].y=4; return f(ga[0]); }" 34
+run_case "struct P { int x; }; struct P ga[2]; void f(struct P *p){ p[1].x=99; } int main(){ f(ga); return ga[1].x; }" 99
+run_case "struct P { int x; int y; }; int sum2(struct P *p, int n){ int s; int i; s=0; i=0; while(i<n){ s=s+p[i].x; i=i+1; } return s; } int main(){ struct P a[2]; a[0].x=3; a[1].x=4; return sum2(a,2); }" 7
+run_case "struct P { int x; }; int main(){ struct P s; struct P *p; s.x=5; p=&s; p[0].x=9; return s.x; }" 9
+
+echo "== P4-II 收口：局部初始化器（标量/一维数组/char 字符串/struct/struct 数组/多声明链） =="
+run_case "int main(){ int a=3; int b; b=a+1; return a*10+b; }" 34
+run_case "int main(){ int a[3]={1,2,3}; return a[0]+a[1]+a[2]; }" 6
+run_case "int main(){ char s[4]=\"ab\"; return s[0]+s[1]; }" 195
+run_case "struct P { int x; int y; }; int main(){ struct P s={3,4}; return s.x*10+s.y; }" 34
+run_case "struct C { char c; int i; }; int main(){ struct C s={65,7}; return s.c+s.i; }" 72
+run_case "struct P { int x; }; int main(){ struct P a[2]={7,8}; return a[0].x+a[1].x; }" 15
+run_case "int main(){ int a=5, b=6; return a*10+b; }" 56
+
+echo "== P4-II 收口：struct 多重指针 -> 链（指针成员 m.n->v / 链写 / 偏置成员 / 全局） =="
+run_case "struct N { int v; }; struct M { struct N *n; }; int main(){ struct N a; struct M m; a.v=7; m.n=&a; return m.n->v; }" 7
+run_case "struct N { int v; }; struct M { struct N *n; }; int main(){ struct N a; struct M m; m.n=&a; m.n->v=9; return a.v; }" 9
+run_case "struct N { int w; int v; }; struct M { struct N *n; int pad; }; int main(){ struct N a; struct M m; a.w=3; a.v=4; m.pad=0; m.n=&a; return m.n->w*10+m.n->v; }" 34
+run_case "struct N { int v; }; struct M { struct N *n; }; struct N g1; struct M g2; int main(){ g1.v=5; g2.n=&g1; return g2.n->v; }" 5
+
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"
 [ "$FAIL" -eq 0 ]
