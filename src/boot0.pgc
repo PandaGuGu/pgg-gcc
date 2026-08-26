@@ -133,8 +133,21 @@
    AArch64 运行时模板（_start 含 gsl/gsb stdin 预载 read 63；print_decimal/char/str/err/int/
    exit 纯 syscall 号 read63/write64/exit93、参数 x0-x5 号 x8、x19-x22 保值）；字符串字面量
    adrp+add :lo12:strN；数据段条件 g_am||g_ar（.quad/.space 8B 与 AMD64 同局）。tests/
-   run_arm.sh 9/9（qemu-aarch64 原生运行）。i386/amd64 五线零变化（五线全绿）。待续：
-   P4-b 透传文本全面化（数组寻址/struct 链/全局寻址/ecpy/三目/switch/sizeof/回收/初始化器）。 */
+   run_arm.sh 9/9（qemu-aarch64 原生运行）。i386/amd64 五线零变化。
+   P4-b 完成 (2026-08-26, chain): 透传文本全面化——全局/局部 1D/2D/3D 数组读写（全局 8B
+   元素跨步、局部 16B 槽跨步、char 稠密）、struct/union 成员链读写（add/sub 基址 + ldrb/ldr）、
+   -> 链（指针换基 8B）、& 取址（多维平铺还原）、ecpy 整值拷贝（ldr/str w4 块）、逗号/三目/
+   sizeof/switch 链/块回收/表达式清栈/局部初始化器（字符串逐字节/mov-lsl 平铺）。**关键面：
+   print_decimal/print_int 32 位 W 寄存器转换截断（镜像 amd64 movl 语义——amd64 亦 8B 装载
+   结构体成员但打印时截 32 位，ARM64 直打 64 位曾露馅）；大立即数 >65535 movz+movk 两段
+   （254 行 PUSHI/sizeof/_start 预读）；ecpy 寻址 [xN,#i]；switch 默认/收尾 b 而非 jmp**。
+   E10 pggcc4 in_buf 131072→262144；boot0 src_buf/irv/irt 262144、sts 131072、stp0 2048。
+   tests/run_arm.sh 42/42（run_amd 42 例平移，qemu 原生）；i386/amd64 五线零变化。
+   P4-c 完成 (2026-08-26, chain): ARM64 双目标闭台——tests/boot_arm.sh：pggcc4→bin_arm →
+   bin_arm 自编 boot0_arm.pgc→selfarm.s(1759813B)→bin1_arm（aarch64 交叉 as/ld 静态）→
+   qemu-aarch64 下 bin1_arm 自编→selfarm2.s→bin2_arm；**门1 selfarm.s==selfarm2.s 逐字节
+   （源码态固定点）、门2 二进制可复现（唯一 .o 重链）、门4 三头行为矩阵 5/5（全 qemu 原生）**。
+   ARM64 自举闭台达成；i386/AMD64 五线零变化（六线全绿）。 */
 int pg_quiet=1;
 char src_buf[262144];
 int src_len;
@@ -336,7 +349,7 @@ while(i<irc){
  if(irt[i]==0){ print_str(irv[i]); i=i+1; }
  else if(irt[i]==2){ op=irv[i]; a=0; i=i+1;
   if(i<irc){ if(irt[i]==1){ a=irv[i]; i=i+1; } }
-  if(op==OP_PUSHI){ print_str("    mov x0, #"); print_int(a); print_str("\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+  if(op==OP_PUSHI){ if(a>65535){ print_str("    movz x0, #"); print_int(a-(a/65536)*65536); print_str("\n    movk x0, #"); print_int(a/65536); print_str(", lsl #16\n"); } else { print_str("    mov x0, #"); print_int(a); print_str("\n"); } print_str("    sub sp, sp, #16\n    str x0, [sp]\n"); }
   else if(op==OP_PUSHL){ if(a<0){ print_str("    sub x1, x29, #"); print_int(0-a); print_str("\n    ldr x0, [x1]\n"); } else { print_str("    add x1, x29, #"); print_int(a); print_str("\n    ldr x0, [x1]\n"); } print_str("    sub sp, sp, #16\n    str x0, [sp]\n"); }
   else if(op==OP_STORE){ print_str("    ldr x0, [sp]\n"); if(a<0){ print_str("    sub x1, x29, #"); print_int(0-a); print_str("\n"); } else { print_str("    add x1, x29, #"); print_int(a); print_str("\n"); } print_str("    str x0, [x1]\n    str x0, [sp]\n"); }
   else if(op==OP_JZ){ print_str("    ldr x0, [sp]\n    add sp, sp, #16\n    cmp x0, #0\n    b.eq L"); print_int(a); print_str("\n"); }
@@ -1053,7 +1066,7 @@ else if(tk==T_SIZEOF){ if(aw==0){ se(); } nx(); if(tk!=T_LPAREN){ se(); } nx();
  else { se(); }
  if(tk!=T_RPAREN){ se(); }
  nx();
- if(g_ar==1){ ostr("    mov x0, #"); oint(sz); ostr("\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq $"); oint(sz); ostr("\n"); } else { ostr("    pushl $"); oint(sz); ostr("\n"); }
+ if(g_ar==1){ if(sz>65535){ ostr("    movz x0, #"); oint(sz-(sz/65536)*65536); ostr("\n    movk x0, #"); oint(sz/65536); ostr(", lsl #16\n"); } else { ostr("    mov x0, #"); oint(sz); ostr("\n"); } ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq $"); oint(sz); ostr("\n"); } else { ostr("    pushl $"); oint(sz); ostr("\n"); }
  aw=0;
 }
 else { break; } }
@@ -2400,7 +2413,7 @@ if(g_ar==1){
 ostr(".section .text\n.globl _start\n_start:\n");
 if(gsl>=0 && gsb>=0){
  ostr("    adrp x9, g"); oint(gsl); ostr("\n    add x9, x9, :lo12:g"); oint(gsl); ostr("\n    ldr x0, [x9]\n    cmp x0, #0\n    b.ne L"); oint(q); ostr("\n");
- ostr("    adrp x9, g"); oint(gsb); ostr("\n    add x9, x9, :lo12:g"); oint(gsb); ostr("\n    mov x0, #0\n    mov x1, x9\n    mov x2, #"); oint(gn[gsb]); ostr("\n    mov x8, #63\n    svc 0\n    mov x1, x0\n    adrp x9, g"); oint(gsl); ostr("\n    add x9, x9, :lo12:g"); oint(gsl); ostr("\n    str x1, [x9]\nL"); oint(q); ostr(":\n");
+ ostr("    adrp x9, g"); oint(gsb); ostr("\n    add x9, x9, :lo12:g"); oint(gsb); ostr("\n    mov x0, #0\n    mov x1, x9\n"); if(gn[gsb]>65535){ ostr("    movz x2, #"); oint(gn[gsb]-(gn[gsb]/65536)*65536); ostr("\n    movk x2, #"); oint(gn[gsb]/65536); ostr(", lsl #16\n"); } else { ostr("    mov x2, #"); oint(gn[gsb]); ostr("\n"); } ostr("    mov x8, #63\n    svc 0\n    mov x1, x0\n    adrp x9, g"); oint(gsl); ostr("\n    add x9, x9, :lo12:g"); oint(gsl); ostr("\n    str x1, [x9]\nL"); oint(q); ostr(":\n");
 }
 ostr("    bl f"); oint(mn); ostr("\n");
 if(gpq<0){ ostr("    bl print_decimal\n    mov x0, #10\n    bl print_char\n"); }

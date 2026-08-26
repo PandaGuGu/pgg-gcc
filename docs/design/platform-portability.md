@@ -272,6 +272,23 @@ bin0（x86）直接产出目标 ISA 汇编，用目标平台的 binutils 汇编/
 > > **风险**：AArch64 立即数 12 位——局部帧 >4095B 需 movz 两段（登记局限，冒烟/闭台用例
 > > 帧均 <4KB）；adrp 页跨边界（as 的 :lo12: 重定位处理）；qemu 语义偏差（登记已知偏差，
 > > 不作行为对照依据）；bin_arm 自编译 boot0_arm 时 IR 缓冲/数据段尺寸增长（沿用 E 系列登记）。
+>
+> **P4-b 完成（2026-08-26）**：透传文本 ARM64 全面化——全局/局部 1D/2D/3D 数组读写（全局
+> 8B 元素、局部 16B 槽、char 稠密）、struct/union 成员链、-> 链、& 取址、ecpy、逗号/三目/
+> sizeof/switch/回收/初始化器。**关键面**：① print_decimal/print_int 32 位 W 寄存器转换截断
+> （镜像 amd64 movl 语义——amd64 亦 8B 装载结构体成员但打印截 32 位掩盖，ARM64 直打 64 位
+> 露馅，W 截断后 42 例全部对齐）；② >65535 立即数 movz+movk 两段（PUSHI/sizeof/_start
+> stdin 预读三处内联）；③ ecpy 用 [xN,#i] 寻址；④ switch 默认/收尾 b 而非 jmp。**E10**：
+> pggcc4 in_buf 131072→262144（boot0.pgc 146KB）；boot0 src_buf 131072→262144、irv/irt
+> 131072→262144、sts 65536→131072、stp0 1024→2048。tests/run_arm.sh **42/42**（run_amd 42
+> 例平移，aarch64 交叉 as/ld + qemu 原生）；i386/AMD64 五线零变化。
+>
+> **P4-c 完成（2026-08-26，ARM64 双目标闭台）**：tests/boot_arm.sh——pggcc4→bin_arm（g_ar=1
+> 常量折叠变体）→ bin_arm 自编 boot0_arm.pgc→selfarm.s(1759813B)→bin1_arm（aarch64 交叉
+> as/ld 静态链接，无 libc）→ **qemu-aarch64 下 bin1_arm 自编**→selfarm2.s→bin2_arm；**门1
+> selfarm.s==selfarm2.s 逐字节（源码态固定点）、门2 二进制可复现、门4 三头行为矩阵 5/5
+> （三头均在 qemu 下原生运行）**。ARM64 自举闭台达成；i386/AMD64 六线零变化。
+> **里程碑：P4（ARM64 后端）+ 双目标闭台达成**，下一步 P5：恢复 C99 特性面。
 
 ## 6. 决策记录（Q1–Q5，2026-08-26 用户拍板）
 
