@@ -68,12 +68,17 @@
    新增 IR 缓冲 irt/irv/irc + ostr()/oint()（追加记录，不再即时输出）+ irgo()（后端渲染器，
    main 尾部统一消费：类型0 字符串地址→print_str、类型1 整数→print_int）。全部发码调用点
    print_str/print_int 改名 ostr/oint（print_err/print_decimal/print_char/exit 保留直出）。
-   i386 输出逐字节不变（门控：run_boot 232/232 + boot_b4 闭台不破）。下一步 P1-b 指令语义化。
+   i386 输出逐字节不变（门控：run_boot 232 + boot_b4 闭台不破）。下一步 P1-b 指令语义化。
    P1-b 首轮 (2026-08-26, chain): 指令语义化第一步——IR 记录类型扩展（0=文本/1=整数/2=操作码，
    操作码后随参数记录）：新增 OP_PUSHI/OP_PUSHL/OP_STORE/OP_JZ/OP_JNZ/OP_JMP/OP_LBL 七操作码+
    irop(op,a)；em_p/em_ld/es_/em_jz/em_jnz/em_jmp/em_lbl 七个结构化单参发码函数改为写操作码，
    irgo() 按操作码分发（pushl imm/offset、movl 存储、jz/jnz/jmp/label）。em_o/em_cm 等复杂文本
-   多行模板保留值流透传（下轮迁）。i386 输出不变（门控：run_boot 232 + boot_b4 闭台不破）。 */
+   多行模板保留值流透传（下轮迁）。i386 输出不变（门控：run_boot 232 + boot_b4 闭台不破）。
+   P1-b 续轮 (2026-08-26, chain): em_o（15 种一元/二元/逻辑运算符）与 em_cm（6 种比较）也
+   语义化——OP_BINOP/OP_CMP 操作码（参数=operator token），irgo 渲染器内按 token 分发展码
+   文本（与首轮同构）。至此发码层全部运算与跳转/存储/压栈/标签指令均为操作码+参数，仅
+   复杂寻址/数据段/运行时模板文本保留值流透传。i386 输出不变（门控：run_boot 232 + boot_b4
+   闭台不破）。 */
 int pg_quiet=1;
 char src_buf[131072];
 int src_len;
@@ -209,6 +214,32 @@ while(i<irc){
   else if(op==OP_JNZ){ print_str("    popl %eax\n    testl %eax, %eax\n    jnz L"); print_int(a); print_str("\n"); }
   else if(op==OP_JMP){ print_str("    jmp L"); print_int(a); print_str("\n"); }
   else if(op==OP_LBL){ print_str("L"); print_int(a); print_str(":\n"); }
+  else if(op==OP_BINOP){
+   if(a==T_PLUS){ print_str("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
+   else if(a==T_PERCENT){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %edx\n"); }
+   else if(a==T_BAND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_BOR){ print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_XOR){ print_str("    popl %ecx\n    popl %eax\n    xorl %ecx, %eax\n    pushl %eax\n"); }
+   else if(a==T_SHL){ print_str("    popl %ecx\n    popl %eax\n    shll %cl, %eax\n    pushl %eax\n"); }
+   else if(a==T_SHR){ print_str("    popl %ecx\n    popl %eax\n    shrl %cl, %eax\n    pushl %eax\n"); }
+   else if(a==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
+   else if(a==T_NOT){ print_str("    popl %eax\n    testl %eax, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else if(a==T_TILDE){ print_str("    popl %eax\n    notl %eax\n    pushl %eax\n"); }
+   else if(a==T_DEREF){ print_str("    popl %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
+   else if(a==T_AND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else { print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+  }
+  else if(op==OP_CMP){
+   if(a==T_EQ){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else if(a==T_NE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else if(a==T_LT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setl %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else if(a==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setle %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else if(a==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+   else { print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+  }
  }
  else { print_int(irv[i]); i=i+1; }
  }
@@ -373,30 +404,8 @@ if(c=='^'){ tk=T_XOR; pos=pos+1; return; }
 if(c=='!'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_NE; pos=pos+1; return; } } tk=T_NOT; return; }
 tk=T_NUM; ie(); }
 void em_p(int v){ irop(OP_PUSHI, v); }
-void em_o(int t){
-if(t==T_PLUS){ ostr("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_MINUS){ ostr("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_STAR){ ostr("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_SLASH){ ostr("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
-if(t==T_PERCENT){ ostr("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %edx\n"); }
-if(t==T_BAND){ ostr("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_BOR){ ostr("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_XOR){ ostr("    popl %ecx\n    popl %eax\n    xorl %ecx, %eax\n    pushl %eax\n"); }
-if(t==T_SHL){ ostr("    popl %ecx\n    popl %eax\n    shll %cl, %eax\n    pushl %eax\n"); }
-if(t==T_SHR){ ostr("    popl %ecx\n    popl %eax\n    shrl %cl, %eax\n    pushl %eax\n"); }
-if(t==T_UN){ ostr("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
-if(t==T_NOT){ ostr("    popl %eax\n    testl %eax, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_TILDE){ ostr("    popl %eax\n    notl %eax\n    pushl %eax\n"); }
-if(t==T_DEREF){ ostr("    popl %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
-if(t==T_AND){ ostr("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_OR){ ostr("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); } }
-void em_cm(int t){
-if(t==T_EQ){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    sete %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_NE){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setne %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_LT){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setl %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_LE){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setle %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_GT){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); }
-if(t==T_GE){ ostr("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n"); ostr("    movzbl %al, %eax\n    pushl %eax\n"); } }
+void em_o(int t){ irop(OP_BINOP, t); }
+void em_cm(int t){ irop(OP_CMP, t); }
 int iscm(int t){ if(t==T_EQ){ return 1; } if(t==T_NE){ return 1; } if(t==T_LT){ return 1; } if(t==T_LE){ return 1; } if(t==T_GT){ return 1; } if(t==T_GE){ return 1; } return 0; }
 int pr(int t){ if(t==T_UN){ return 5; } if(t==T_NOT){ return 5; } if(t==T_TILDE){ return 5; } if(t==T_DEREF){ return 5; } if(t==T_STAR){ return 4; } if(t==T_SLASH){ return 4; } if(t==T_PERCENT){ return 4; } if(t==T_PLUS){ return 3; } if(t==T_MINUS){ return 3; } if(t==T_SHL){ return 2; } if(t==T_SHR){ return 2; } if(t==T_EQ||t==T_NE||t==T_LT||t==T_LE||t==T_GT||t==T_GE){ return 1; } if(t==T_BAND){ return 0; } if(t==T_XOR){ return -1; } if(t==T_BOR){ return -2; } if(t==T_AND){ return -3; } return -4; }
 void em_pop(int t){ if(iscm(t)==1){ em_cm(t); } else { em_o(t); } }
