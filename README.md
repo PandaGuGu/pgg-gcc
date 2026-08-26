@@ -34,6 +34,10 @@
 > **C90 全量达成**（run_boot 232/232、闭台固定点不破，详见 ORIGIN P4-II 行与日志会话 8）。
 > 方案与执行结果见
 > [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md)。
+>
+> **2026-08-26 平台移植决策定稿**：路线 A（多后端＋交叉自举）、D1b 轻量 IR、Q1–Q5 用户拍板；
+> C99 特性面 P5 前先完成移植里程碑 P0–P4（决策→IR 重构→AMD64→双目标闭台→ARM64）。
+> 详见 [docs/design/platform-portability.md](docs/design/platform-portability.md)。此后每个阶段完成即上传 GitHub。
 
 - 许可证：MIT
 - 语言：目标 C（编译器本体以无蛋方式从 i386 汇编层起步，见基线 §6；当前已可用 pggcc 语言自举，见 architecture-b2）
@@ -47,6 +51,7 @@
 | [docs/design/plan-language-features.md](docs/design/plan-language-features.md) | **语言特性实现计划**：C90→C23 / C++98→26 特性台账；§4 P0–P3 可直接开工细则（词法/文法/语义/发码/自证点）；§6 自举路线（生蛋时机决策 + 里程碑 B0–B6） |
 | [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) | **v0 无蛋架构评审**（Winston）：设计权衡 T1–T5、里程碑 M1–M4、验收门、§7 接口定标 |
 | [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md) | **B2 自举重写方案**（B0 决策点提交件＋执行结果）：D1–D3 决策、B2-P0 模板扩展、boot0 自语言面、分步 B2a–g 自证与自举成功记录、B3/B4/B5 承接 |
+| [docs/design/platform-portability.md](docs/design/platform-portability.md) | **平台移植性决策**（2026-08-26 定稿）：三层机器码绑定分析、路线 A（多后端＋交叉自举）对照 B/C、轻量 IR（D1b）、路线图 P0 决策→P1 IR→P2 AMD64→P3 双目标闭台→P4 ARM64→P5+ 特性面（C99）；Q1–Q5 用户拍板 |
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
 | [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
@@ -128,7 +133,7 @@ bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译
   与 [architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) §7（接口定标）再动手；
   接口定标可推翻，但必须日志留痕。
 - **文档纪律**：每完成一个特性，在 [ORIGIN.md](ORIGIN.md) 登记（标准条款 + 实现日期）、更新当日日志，
-  随后 commit；**不主动 push GitHub，除非用户明确要求**。
+  随后 commit；**阶段推送**：2026-08-26 起用户要求每个阶段完成即上传 GitHub（令牌见 `D:\API_KEY\github令牌`）。
 - **工程规范**：Rule of Three（出现第 3 个同构模块才抽象）；单文件、可审计、教学级注释；
   寄存器等约定单页文档化。
 - **验证边界**：`as`/`ld` 与裸 syscall 属环境验证工具，可用；但**任何"与编译器行为比较"都不允许**
