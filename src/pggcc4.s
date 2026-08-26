@@ -276,7 +276,7 @@ s_runtime:  .asciz "f_print_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl 
 
 # ---- 编译器自身工作内存（.bss） ----
 .section .bss
-in_buf:      .space 131073       # B2 前置：源码读入上限 4096→65536（boot0.pgc 超 4KB）；E9：P4-II 剩余特性 boot0.pgc 增至 66KB+，截断引发字符串"未闭合"误报 → 上限 65536→131072
+in_buf:      .space 262145       # B2 前置：源码读入上限 4096→65536（boot0.pgc 超 4KB）；E9：P4-II 剩余特性 boot0.pgc 增至 66KB+，截断引发字符串"未闭合"误报 → 上限 65536→131072；E10：P4-b ARM64 透传全面化 boot0.pgc 达 146KB → 上限 131072→262144
 input_start: .long 0
 tok_kind:    .long 0
 tok_ival:    .long 0
@@ -355,7 +355,7 @@ _start:
     movl $3, %eax
     xorl %ebx, %ebx
     leal in_buf, %ecx
-    movl $131072, %edx
+    movl $262144, %edx
     int $0x80
     testl %eax, %eax
     js .Lrd_bad

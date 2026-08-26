@@ -136,7 +136,7 @@
    run_arm.sh 9/9（qemu-aarch64 原生运行）。i386/amd64 五线零变化（五线全绿）。待续：
    P4-b 透传文本全面化（数组寻址/struct 链/全局寻址/ecpy/三目/switch/sizeof/回收/初始化器）。 */
 int pg_quiet=1;
-char src_buf[131072];
+char src_buf[262144];
 int src_len;
 int pos;
 int tk;
@@ -176,8 +176,8 @@ int gcol[256];
 int gsz;
 int g_ty;
 int pdlv;
-char sts[65536];
-int stp0[1024];
+char sts[131072];
+int stp0[2048];
 int stc;
 int stn;
 int gsb;
@@ -234,8 +234,8 @@ int so_rp[32];
 int ast[1024];
 int astp;
 int irc;
-int irt[131072];
-int irv[131072];
+int irt[262144];
+int irv[262144];
 int OP_PUSHI=1;
 int OP_PUSHL=2;
 int OP_STORE=3;
@@ -256,9 +256,9 @@ j=0; while(j<k){ if(tp+j<src_len){ eb[i]=src_buf[tp+j]; i=i+1; } j=j+1; }
 eb[i]=0; }
 void se(){ ml(); print_err(eb); exit(2); }
 void ie(){ ml(); print_err(eb); exit(1); }
-void ostr(char *s){ if(irc>=131072){ ie(); } irv[irc]=s; irt[irc]=0; irc=irc+1; }
-void oint(int v){ if(irc>=131072){ ie(); } irv[irc]=v; irt[irc]=1; irc=irc+1; }
-void irop(int op, int a){ if(irc>=131070){ ie(); } irv[irc]=op; irt[irc]=2; irc=irc+1; irv[irc]=a; irt[irc]=1; irc=irc+1; }
+void ostr(char *s){ if(irc>=262144){ ie(); } irv[irc]=s; irt[irc]=0; irc=irc+1; }
+void oint(int v){ if(irc>=262144){ ie(); } irv[irc]=v; irt[irc]=1; irc=irc+1; }
+void irop(int op, int a){ if(irc>=262142){ ie(); } irv[irc]=op; irt[irc]=2; irc=irc+1; irv[irc]=a; irt[irc]=1; irc=irc+1; }
 void irgo(){ int i; int op; int a;
 i=0;
 while(i<irc){
@@ -486,13 +486,13 @@ if(k==1){ tk=T_ID; tl=0;
  return; }
 if(c==34){ tk=T_STR; tv=stc; tl=0;
  pos=pos+1;
- if(stc>=1024){ se(); }
+ if(stc>=2048){ se(); }
  stp0[stc]=stn;
  while(1){ if(pos>=src_len){ se(); } c=src_buf[pos]; pos=pos+1;
   if(c==34){ break; }
   if(c==92){ if(pos>=src_len){ se(); } c=src_buf[pos]; pos=pos+1;
    if(c=='n'){ c=10; } else if(c=='t'){ c=9; } else if(c=='\\'){ c=92; } else if(c=='"'){ c=34; } }
-  if(stn>=65536){ se(); }
+  if(stn>=131072){ se(); }
   sts[stn]=c; stn=stn+1; tl=tl+1; }
  sts[stn]=0; stn=stn+1;
  stc=stc+1;
@@ -596,7 +596,10 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   if(tk!=T_RBKT){ se(); }
   nx();
   opn=q;
-  if(g_am==1){ ostr("    popq %rcx\n");
+  if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_st[s]-1]); ostr("\n    mul x1, x1, x2\n");
+   if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); }
+   ostr("    add x0, x0, x1\n"); }
+  else if(g_am==1){ ostr("    popq %rcx\n");
   ostr("    imulq $"); oint(stsz[so_st[s]-1]); ostr(", %rcx\n");
   ostr("    leaq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n"); }
  else { ostr("    popl %ecx\n");
@@ -618,11 +621,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
     if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
     nx();
    }
-   if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
-   if(fl==1){ if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-   else { if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
+   if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+   if(fl==1){ if(g_ar==1){ ostr("    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+   else { if(g_ar==1){ ostr("    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
    aw=0;
-  } else { if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
+  } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
  } else if(s!=-1 && so_pst[s]>0 && so_p[s]==1){
    /* struct 指针下标 p[i]（可接 .m 链）：索引按 stsz 缩放，基址=指针值 */
    q=opn; opn=0;
@@ -632,7 +635,8 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    if(tk!=T_RBKT){ se(); }
    nx();
    opn=q;
-   if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_pst[s]-1]); ostr("\n    mul x1, x1, x2\n    add x0, x0, x1\n"); }
+   else if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
     ostr("    imulq $"); oint(stsz[so_pst[s]-1]); ostr(", %rcx\n    addq %rcx, %rax\n"); }
    else { ostr("    popl %ecx\n    popl %eax\n");
     ostr("    imull $"); oint(stsz[so_pst[s]-1]); ostr(", %ecx\n    addl %ecx, %eax\n"); }
@@ -652,11 +656,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
      if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
      nx();
     }
-    if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
-    if(fl==1){ if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-    else { if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
+    if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+    if(fl==1){ if(g_ar==1){ ostr("    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+    else { if(g_ar==1){ ostr("    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
     aw=0;
-   } else { if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
+   } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
  } else if(d==1){ q=opn; opn=0;
    nx(); nx();
    em_ld(so[s]);
@@ -664,7 +668,10 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    if(tk!=T_RBKT){ se(); }
    nx();
    opn=q;
-   if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n");
+    if(so_t[s]==1){ ostr("    ldrb w0, [x0, x1]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+    else { ostr("    lsl x1, x1, #3\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+   else if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
     if(so_t[s]==1){ ostr("    movzbq (%rax,%rcx), %rax\n    pushq %rax\n"); }
     else { ostr("    imulq $8, %rcx\n    addq %rcx, %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } }
    else { ostr("    popl %ecx\n    popl %eax\n");
@@ -689,23 +696,27 @@ else if(tk==T_ID){ if(aw==0){ se(); }
      if(tk!=T_RBKT){ se(); }
      nx();
      opn=q;
-     if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(col); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
+     else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(col); ostr(", %rcx\n");
       ostr("    imulq $"); oint(so_p2[s]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n"); }
      else { ostr("    popl %edi\n    popl %edx\n    popl %ecx\n");
       ostr("    imull $"); oint(col); ostr(", %ecx\n");
       ostr("    imull $"); oint(so_p2[s]); ostr(", %edx\n    addl %edx, %ecx\n    addl %edi, %ecx\n"); }
     } else {
-     if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(col); ostr("\n    mul x1, x1, x0\n    add x1, x1, x2\n"); }
+     else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(col); ostr(", %rcx\n    addq %rdx, %rcx\n"); }
      else { ostr("    popl %edx\n    popl %ecx\n");
       ostr("    imull $"); oint(col); ostr(", %ecx\n    addl %edx, %ecx\n"); }
     }
    } else {
-    if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
+    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
    }
-   if(so_t[s]==1){ if(g_am==1){ ostr("    movzbq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); } else { ostr("    movzbl "); oint(so[s]); ostr("(%ebp,%ecx), %eax\n    pushl %eax\n"); } }
-   else { if(g_am==1){ ostr("    movq "); oint(so[s]); ostr("(%rbp,%rcx,8), %rax\n    pushq %rax\n"); } else { ostr("    movl "); oint(so[s]); ostr("(%ebp,%ecx,4), %eax\n    pushl %eax\n"); } }
+   if(so_t[s]==1){ if(g_ar==1){ if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); } ostr("    add x0, x0, x1\n    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else if(g_am==1){ ostr("    movzbq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); } else { ostr("    movzbl "); oint(so[s]); ostr("(%ebp,%ecx), %eax\n    pushl %eax\n"); } }
+   else { if(g_ar==1){ if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); } ostr("    lsl x1, x1, #3\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else if(g_am==1){ ostr("    movq "); oint(so[s]); ostr("(%rbp,%rcx,8), %rax\n    pushq %rax\n"); } else { ostr("    movl "); oint(so[s]); ostr("(%ebp,%ecx,4), %eax\n    pushl %eax\n"); } }
    aw=0;
   } else {
   g=gfd(); if(g<0){ se(); }
@@ -716,7 +727,8 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    if(tk!=T_RBKT){ se(); }
    nx();
    opn=q;
-   if(g_am==1){ ostr("    popq %rcx\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[gstt[g]]); ostr("\n    mul x1, x1, x2\n    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    add x0, x0, x1\n"); }
+   else if(g_am==1){ ostr("    popq %rcx\n");
    ostr("    imulq $"); oint(stsz[gstt[g]]); ostr(", %rcx\n");
    ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n"); }
    else { ostr("    popl %ecx\n");
@@ -738,11 +750,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
      if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
      nx();
     }
-    if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
-    if(fl==1){ if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-    else { if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
+    if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+    if(fl==1){ if(g_ar==1){ ostr("    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+    else { if(g_ar==1){ ostr("    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
     aw=0;
-   } else { if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
+   } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
   } else {
   if(gn[g]==0){ se(); }
   q=opn; opn=0;
@@ -762,27 +774,29 @@ else if(tk==T_ID){ if(aw==0){ se(); }
     if(tk!=T_RBKT){ se(); }
     nx();
     opn=q;
-    if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
+    else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
      ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
      ostr("    imulq $"); oint(gcol2[g]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n"); }
     else { ostr("    popl %edi\n    popl %edx\n    popl %ecx\n");
      ostr("    imull $"); oint(gcol[g]); ostr(", %ecx\n");
      ostr("    imull $"); oint(gcol2[g]); ostr(", %edx\n    addl %edx, %ecx\n    addl %edi, %ecx\n"); }
    } else {
-    if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    add x1, x1, x2\n"); }
+    else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
      ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n    addq %rdx, %rcx\n"); }
     else { ostr("    popl %edx\n    popl %ecx\n");
      ostr("    imull $"); oint(gcol[g]); ostr(", %ecx\n    addl %edx, %ecx\n"); }
    }
-   if(gst[g]==1){ if(g_am==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-   else { if(g_am==1){ ostr("    imulq $8, %rcx\n    leaq g"); oint(g); ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    imull $4, %ecx\n    leal g"); oint(g); ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
+   if(gst[g]==1){ if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    add x0, x0, x1\n    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+   else { if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    lsl x1, x1, #3\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    imulq $8, %rcx\n    leaq g"); oint(g); ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    imull $4, %ecx\n    leal g"); oint(g); ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
    aw=0;
   } else {
-  if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
-  if(gst[g]==1){ if(g_am==1){ ostr("    leaq g"); } else { ostr("    leal g"); } } else { if(g_am==1){ ostr("    imulq $8, %rcx\n    leaq g"); } else { ostr("    imull $4, %ecx\n    leal g"); } }
+  if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
+  if(gst[g]==1){ if(g_ar==1){ ostr("    adrp x0, g"); } else if(g_am==1){ ostr("    leaq g"); } else { ostr("    leal g"); } } else { if(g_ar==1){ ostr("    lsl x1, x1, #3\n    adrp x0, g"); } else if(g_am==1){ ostr("    imulq $8, %rcx\n    leaq g"); } else { ostr("    imull $4, %ecx\n    leal g"); } }
   oint(g);
-  if(gst[g]==1){ if(g_am==1){ ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-  else { if(g_am==1){ ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
+  if(gst[g]==1){ if(g_ar==1){ ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    add x0, x0, x1\n    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+  else { if(g_ar==1){ ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
   aw=0;
   }
   }
@@ -801,11 +815,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   else { csid=gstt[g]; if(csid<0){ se(); } }
  }
  nx();
- if(ar2==1){ if(si!=-1){ if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
-  else { if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rax\n"); } else { ostr("    movl g"); oint(g); ostr(", %eax\n"); } } }
- else { if(si!=-1){ if(prm==1){ if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
-   else { if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n"); } } }
-  else { if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n"); } } }
+ if(ar2==1){ if(si!=-1){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n    ldr x0, [x0]\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n    ldr x0, [x0]\n"); } } else if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
+  else { if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    ldr x0, [x0]\n"); } else if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rax\n"); } else { ostr("    movl g"); oint(g); ostr(", %eax\n"); } } }
+ else { if(si!=-1){ if(prm==1){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n    ldr x0, [x0]\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n    ldr x0, [x0]\n"); } } else if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
+   else { if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n"); } } else if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n"); } } }
+  else { if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n"); } } }
  off=0; fl=0; op3=0;
  while(1){
   if(tk!=T_ID){ se(); }
@@ -821,30 +835,30 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
   if(op3==1){
    /* 指针成员且链继续：装载指针值换基，分段发码 */
-   if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
-   if(g_am==1){ ostr("    movq (%rax), %rax\n"); } else { ostr("    movl (%eax), %eax\n"); }
+   if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+   if(g_ar==1){ ostr("    ldr x0, [x0]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n"); } else { ostr("    movl (%eax), %eax\n"); }
    csid=sms[csid*8+pt];
    off=0; fl=-1;
   }
   nx();
  }
- if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
- if(fl==1){ if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
- else { if(fl==-1){ if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } }
-  else { if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } } }
+ if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+if(fl==1){ if(g_ar==1){ ostr("    ldrb w0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+else { if(fl==-1){ if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } }
+  else { if(g_ar==1){ ostr("    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } } }
  aw=0;
  } else { pos=sp; tk=T_ID; tp=stp; tl=stl;
   i=cstfind();
   if(i!=-1){ em_p(csv[i]); aw=0; nx(); }
   else {
   s=fi(); if(s==-1){ g=gfd(); if(g<0){ se(); }
-   if(gn[g]>0){ if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } }
-   else { if(gstt[g]>=0){ if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } }
+   if(gn[g]>0){ if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } }
+   else { if(gstt[g]>=0){ if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } }
     else { if(grp[g]==1){ if(opn>0){ if(oq[opn-1]==T_DEREF){ opn=opn-1; } } }
-     if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    movl g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } } }
+     if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    movl g"); oint(g); ostr(", %eax\n    pushl %eax\n"); } } }
   } else { si=fi_i();
-   if(so_sz[si]>0){ if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
-   else { if(so_st[si]>0){ if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
+   if(so_sz[si]>0){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n"); } ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
+   else { if(so_st[si]>0){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n"); } ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
     else { if(so_rp[si]==1){ if(opn>0){ if(oq[opn-1]==T_DEREF){ opn=opn-1; } } }
      em_ld(s); } }
   }
@@ -861,7 +875,8 @@ else if(tk==T_LBKT){ if(aw==1){ se(); }
  nx(); aw=1; e_expr();
  if(tk!=T_RBKT){ se(); }
  nx();
- if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n"); ostr("    imulq $4, %rcx\n    addq %rcx, %rax\n    movq (%rax), %rax\n    pushq %rax\n"); }
+ if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n    lsl x1, x1, #2\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+ else if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n"); ostr("    imulq $4, %rcx\n    addq %rcx, %rax\n    movq (%rax), %rax\n    pushq %rax\n"); }
  else { ostr("    popl %ecx\n    popl %eax\n"); ostr("    imull $4, %ecx\n    addl %ecx, %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
  aw=0; }
 else if(tk==T_AND||tk==T_OR){
@@ -895,7 +910,7 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
      if(tk!=T_RBKT){ se(); }
      nx();
      opn=q;
-     if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
+     if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
      if(s!=-1){ if(so_p[s]==1){ esz=4; }
       else if(so_sz[s]>0){ if(so_st[s]>0){ esz=stsz[so_st[s]-1]; } else { if(so_t[s]==1){ esz=1; } else { esz=4; } } }
       else { esz=0; }
@@ -903,20 +918,22 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
       /* 多维 & 取址：还原第一维 %ecx 至栈，镜像读路径（e_expr）统一算平铺索引；
          so_p=跨度（2D=列数 / 3D=D2*D3）、so_p2=第三维 D3、so_st>0 为 struct 数组只 1 维 */
       if(so_sz[s]>0){ if(so_st[s]==0){ if(so_p[s]>=2){
-       if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
+       if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x1, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
        if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
        if(tk!=T_RBKT){ se(); } nx(); opn=q;
        if(so_p2[s]>0){
         if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
         if(tk!=T_RBKT){ se(); } nx(); opn=q;
-        if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+        if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(so_p[s]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
+        else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(so_p[s]); ostr(", %rcx\n");
          ostr("    imulq $"); oint(so_p2[s]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n"); }
         else { ostr("    popl %edi\n    popl %edx\n    popl %ecx\n");
          ostr("    imull $"); oint(so_p[s]); ostr(", %ecx\n");
          ostr("    imull $"); oint(so_p2[s]); ostr(", %edx\n    addl %edx, %ecx\n    addl %edi, %ecx\n"); }
        } else {
-        if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+        if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(so_p[s]); ostr("\n    mul x1, x1, x0\n    add x1, x1, x2\n"); }
+        else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(so_p[s]); ostr(", %rcx\n    addq %rdx, %rcx\n"); }
         else { ostr("    popl %edx\n    popl %ecx\n");
          ostr("    imull $"); oint(so_p[s]); ostr(", %ecx\n    addl %edx, %ecx\n"); }
@@ -924,7 +941,8 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
       } } }
       esz=4;
       if(so_st[s]>0){ esz=stsz[so_st[s]-1]; } else { if(so_t[s]==1){ esz=1; } else { esz=4; } }
-      if(g_am==1){ ostr("    imulq $"); oint(esz); ostr(", %rcx\n");
+      if(g_ar==1){ if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); } ostr("    mov x2, #"); oint(esz); ostr("\n    mul x1, x1, x2\n    add x0, x0, x1\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else if(g_am==1){ ostr("    imulq $"); oint(esz); ostr(", %rcx\n");
        ostr("    leaq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); }
       else { ostr("    imull $"); oint(esz); ostr(", %ecx\n");
        ostr("    leal "); oint(so[s]); ostr("(%ebp,%ecx), %eax\n    pushl %eax\n"); }
@@ -933,26 +951,29 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
       if(gn[g]==0){ se(); }
       if(gstt[g]>=0){ esz=stsz[gstt[g]]; } else { if(gst[g]==1){ esz=1; } else { esz=4; } }
       if(gcol[g]>0){ if(gstt[g]<0){
-       if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
+       if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x1, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
        if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
        if(tk!=T_RBKT){ se(); } nx(); opn=q;
        if(gcol2[g]>0){
         if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
         if(tk!=T_RBKT){ se(); } nx(); opn=q;
-        if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+        if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
+        else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
          ostr("    imulq $"); oint(gcol2[g]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n"); }
         else { ostr("    popl %edi\n    popl %edx\n    popl %ecx\n");
          ostr("    imull $"); oint(gcol[g]); ostr(", %ecx\n");
          ostr("    imull $"); oint(gcol2[g]); ostr(", %edx\n    addl %edx, %ecx\n    addl %edi, %ecx\n"); }
        } else {
-        if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+        if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    add x1, x1, x2\n"); }
+        else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n    addq %rdx, %rcx\n"); }
         else { ostr("    popl %edx\n    popl %ecx\n");
          ostr("    imull $"); oint(gcol[g]); ostr(", %ecx\n    addl %edx, %ecx\n"); }
        }
       } }
-      if(g_am==1){ ostr("    imulq $"); oint(esz); ostr(", %rcx\n");
+      if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    mov x2, #"); oint(esz); ostr("\n    mul x1, x1, x2\n    add x0, x0, x1\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else if(g_am==1){ ostr("    imulq $"); oint(esz); ostr(", %rcx\n");
        ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n    pushq %rax\n"); }
       else { ostr("    imull $"); oint(esz); ostr(", %ecx\n");
        ostr("    leal g"); oint(g); ostr("(%ecx), %eax\n    pushl %eax\n"); }
@@ -977,15 +998,15 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
       if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
       nx();
      }
-     if(si!=-1){ if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
-     else { if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n"); } }
-     if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
-     if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
+     if(si!=-1){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x0, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[si]); ostr("\n"); } } else if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rax\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %eax\n"); } }
+     else { if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n"); } }
+     if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+     if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
      aw=0;
     } else { pos=sp; tk=T_ID; tp=stp; tl=stl;
      s=fi_i(); if(s==-1){ g=gfd(); if(g<0){ se(); }
-      if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); }
-     } else { if(g_am==1){ ostr("    leaq "); oint(so[s]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[s]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
+      if(g_ar==1){ ostr("    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rax\n    pushq %rax\n"); } else { ostr("    leal g"); oint(g); ostr(", %eax\n    pushl %eax\n"); }
+     } else { if(g_ar==1){ if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); } ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    leaq "); oint(so[s]); ostr("(%rbp), %rax\n    pushq %rax\n"); } else { ostr("    leal "); oint(so[s]); ostr("(%ebp), %eax\n    pushl %eax\n"); } }
      aw=0; nx(); } }
    else { se(); } }
   else { se(); } }
@@ -995,13 +1016,14 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
 else if(tk==T_QMARK){ if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
  t1=lc; lc=lc+2;
- if(g_am==1){ ostr("    popq %rax\n    testq %rax, %rax\n    jz L"); oint(t1); ostr("\n"); }
+ if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    cmp x0, #0\n    b.eq L"); oint(t1); ostr("\n"); }
+ else if(g_am==1){ ostr("    popq %rax\n    testq %rax, %rax\n    jz L"); oint(t1); ostr("\n"); }
  else { ostr("    popl %eax\n    testl %eax, %eax\n    jz L"); oint(t1); ostr("\n"); }
  nx();
  tbs=tbd; tbd=opn;
  tn=tn+1; aw=1; e_expr(); tn=tn-1;
  if(tk!=T_COLON){ se(); }
- ostr("    jmp L"); oint(t1+1); ostr("\nL"); oint(t1); ostr(":\n");
+ if(g_ar==1){ ostr("    b L"); } else { ostr("    jmp L"); } oint(t1+1); ostr("\nL"); oint(t1); ostr(":\n");
  nx();
  aw=1; e_expr();
  ostr("L"); oint(t1+1); ostr(":\n");
@@ -1011,7 +1033,7 @@ else if(tk==T_COLON){ if(tn>0){ break; } else { se(); } }
 else if(tk==T_COMMA){ if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
  if(ar>0){ if(opn==0){ break; } if(oq[opn-1]!=T_LPAREN){ break; } }
- if(g_am==1){ ostr("    popq %rax\n"); } else { ostr("    popl %eax\n"); }
+ if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    popq %rax\n"); } else { ostr("    popl %eax\n"); }
  aw=1; nx(); }
 else if(tk==T_SIZEOF){ if(aw==0){ se(); } nx(); if(tk!=T_LPAREN){ se(); } nx();
  sz=4;
@@ -1024,14 +1046,14 @@ else if(tk==T_SIZEOF){ if(aw==0){ se(); } nx(); if(tk!=T_LPAREN){ se(); } nx();
     if(gn[g]>0){ if(gstt[g]>=0){ sz=gn[g]*stsz[gstt[g]]; } else { if(gst[g]==1){ sz=gn[g]; } else { sz=gn[g]*4; } } }
     else { if(gst[g]==1){ sz=1; } if(gstt[g]>=0){ sz=stsz[gstt[g]]; } } }
    else { si=fi_i();
-    if(so_sz[si]>0){ if(so_st[si]>0){ sz=so_sz[si]*stsz[so_st[si]-1]; } else { if(so_t[si]==1){ sz=so_sz[si]; } else { if(g_am==1){ sz=so_sz[si]*8; } else { sz=so_sz[si]*4; } } } }
+    if(so_sz[si]>0){ if(so_st[si]>0){ sz=so_sz[si]*stsz[so_st[si]-1]; } else { if(so_t[si]==1){ sz=so_sz[si]; } else { if(g_ar==1){ sz=so_sz[si]*16; } else if(g_am==1){ sz=so_sz[si]*8; } else { sz=so_sz[si]*4; } } } }
     else { if(so_p[si]>0){ sz=4; }
      if(so_st[si]>0){ sz=stsz[so_st[si]-1]; } } }
    nx(); } }
  else { se(); }
  if(tk!=T_RPAREN){ se(); }
  nx();
- if(g_am==1){ ostr("    pushq $"); oint(sz); ostr("\n"); } else { ostr("    pushl $"); oint(sz); ostr("\n"); }
+ if(g_ar==1){ ostr("    mov x0, #"); oint(sz); ostr("\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq $"); oint(sz); ostr("\n"); } else { ostr("    pushl $"); oint(sz); ostr("\n"); }
  aw=0;
 }
 else { break; } }
@@ -1044,11 +1066,13 @@ void ecpy(int sz){ int i;
 i=0;
 while(i<sz){
  if(i+4<=sz){
-  if(g_am==1){ ostr("    movq "); oint(i); ostr("(%rcx), %rax\n"); ostr("    movq %rax, "); oint(i); ostr("(%rdx)\n"); }
+  if(g_ar==1){ ostr("    ldr w4, [x1, #"); oint(i); ostr("]\n    str w4, [x2, #"); oint(i); ostr("]\n"); }
+  else if(g_am==1){ ostr("    movq "); oint(i); ostr("(%rcx), %rax\n"); ostr("    movq %rax, "); oint(i); ostr("(%rdx)\n"); }
   else { ostr("    movl "); oint(i); ostr("(%ecx), %eax\n"); ostr("    movl %eax, "); oint(i); ostr("(%edx)\n"); }
   i=i+4;
  } else {
-  if(g_am==1){ ostr("    movb "); oint(i); ostr("(%rcx), %al\n"); ostr("    movb %al, "); oint(i); ostr("(%rdx)\n"); }
+  if(g_ar==1){ ostr("    ldrb w4, [x1, #"); oint(i); ostr("]\n    strb w4, [x2, #"); oint(i); ostr("]\n"); }
+  else if(g_am==1){ ostr("    movb "); oint(i); ostr("(%rcx), %al\n"); ostr("    movb %al, "); oint(i); ostr("(%rdx)\n"); }
   else { ostr("    movb "); oint(i); ostr("(%ecx), %al\n"); ostr("    movb %al, "); oint(i); ostr("(%edx)\n"); }
   i=i+1;
  } }
@@ -1072,11 +1096,11 @@ if(tk==T_ID){
    else { csid=gstt[g]; if(csid<0){ se(); } }
   }
   nx();
-  if(ar2==1){ if(si!=-1){ if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %edx\n"); } }
-   else { if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rdx\n"); } else { ostr("    movl g"); oint(g); ostr(", %edx\n"); } } }
-  else { if(si!=-1){ if(prm==1){ if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %edx\n"); } }
-    else { if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %edx\n"); } } }
-   else { if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rdx\n"); } else { ostr("    leal g"); oint(g); ostr(", %edx\n"); } } }
+  if(ar2==1){ if(si!=-1){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x2, x29, #"); oint(0-so[si]); ostr("\n    ldr x2, [x2]\n"); } else { ostr("    add x2, x29, #"); oint(so[si]); ostr("\n    ldr x2, [x2]\n"); } } else if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %edx\n"); } }
+   else { if(g_ar==1){ ostr("    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n    ldr x2, [x2]\n"); } else if(g_am==1){ ostr("    movq g"); oint(g); ostr(", %rdx\n"); } else { ostr("    movl g"); oint(g); ostr(", %edx\n"); } } }
+  else { if(si!=-1){ if(prm==1){ if(g_ar==1){ if(so[si]<0){ ostr("    sub x2, x29, #"); oint(0-so[si]); ostr("\n    ldr x2, [x2]\n"); } else { ostr("    add x2, x29, #"); oint(so[si]); ostr("\n    ldr x2, [x2]\n"); } } else if(g_am==1){ ostr("    movq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    movl "); oint(so[si]); ostr("(%ebp), %edx\n"); } }
+    else { if(g_ar==1){ if(so[si]<0){ ostr("    sub x2, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x2, x29, #"); oint(so[si]); ostr("\n"); } } else if(g_am==1){ ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rdx\n"); } else { ostr("    leal "); oint(so[si]); ostr("(%ebp), %edx\n"); } } }
+   else { if(g_ar==1){ ostr("    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n"); } else if(g_am==1){ ostr("    leaq g"); oint(g); ostr(", %rdx\n"); } else { ostr("    leal g"); oint(g); ostr(", %edx\n"); } } }
   off=0; fl=0; op3=0;
   while(1){
    if(tk!=T_ID){ se(); }
@@ -1092,8 +1116,8 @@ if(tk==T_ID){
    if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
    if(op3==1){
     /* 指针成员且链继续：装载指针值换基，分段发码 */
-    if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); } else { ostr("    addl $"); oint(off); ostr(", %edx\n"); } }
-    if(g_am==1){ ostr("    movq (%rdx), %rdx\n"); } else { ostr("    movl (%edx), %edx\n"); }
+    if(off>0){ if(g_ar==1){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); } else { ostr("    addl $"); oint(off); ostr(", %edx\n"); } }
+    if(g_ar==1){ ostr("    ldr x2, [x2]\n"); } else if(g_am==1){ ostr("    movq (%rdx), %rdx\n"); } else { ostr("    movl (%edx), %edx\n"); }
     csid=sms[csid*8+pt];
     off=0; fl=-1;
    }
@@ -1102,7 +1126,11 @@ if(tk==T_ID){
   if(tk!=T_ASSIGN){ se(); }
   nx();
   p_a();
-  if(g_am==1){ ostr("    popq %rax\n");
+  if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n");
+   if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+   if(fl==1){ ostr("    strb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+   else { ostr("    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+  else if(g_am==1){ ostr("    popq %rax\n");
    if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
    if(fl==1){ ostr("    movb %al, (%rdx)\n    pushq %rax\n"); }
    else { ostr("    movq %rax, (%rdx)\n    pushq %rax\n"); } }
@@ -1118,19 +1146,21 @@ if(tk==T_ID){
   nx();
   p_a();
   if(s!=-1){ if(si>=0){ if(so_st[si]>0){
-    if(g_am==1){ ostr("    popq %rcx\n"); ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rdx\n"); }
+    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n"); if(so[si]<0){ ostr("    sub x2, x29, #"); oint(0-so[si]); ostr("\n"); } else { ostr("    add x2, x29, #"); oint(so[si]); ostr("\n"); } }
+    else if(g_am==1){ ostr("    popq %rcx\n"); ostr("    leaq "); oint(so[si]); ostr("(%rbp), %rdx\n"); }
     else { ostr("    popl %ecx\n"); ostr("    leal "); oint(so[si]); ostr("(%ebp), %edx\n"); }
     ecpy(stsz[so_st[si]-1]);
-    if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
+    if(g_ar==1){ ostr("    mov x0, x1\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
    } else { es_(s); } }
    else { es_(s); }
   } else {
    if(gstt[g]>=0){
-    if(g_am==1){ ostr("    popq %rcx\n    leaq g"); oint(g); ostr(", %rdx\n"); }
+    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n"); }
+    else if(g_am==1){ ostr("    popq %rcx\n    leaq g"); oint(g); ostr(", %rdx\n"); }
     else { ostr("    popl %ecx\n    leal g"); oint(g); ostr(", %edx\n"); }
     ecpy(stsz[gstt[g]]);
-    if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
-   } else { if(g_am==1){ ostr("    popq %rax\n    movq %rax, g"); oint(g); ostr("\n    pushq %rax\n"); } else { ostr("    popl %eax\n    movl %eax, g"); oint(g); ostr("\n    pushl %eax\n"); } }
+    if(g_ar==1){ ostr("    mov x0, x1\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); }
+   } else { if(g_ar==1){ ostr("    ldr x0, [sp]\n    adrp x1, g"); oint(g); ostr("\n    add x1, x1, :lo12:g"); oint(g); ostr("\n    str x0, [x1]\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    popq %rax\n    movq %rax, g"); oint(g); ostr("\n    pushq %rax\n"); } else { ostr("    popl %eax\n    movl %eax, g"); oint(g); ostr("\n    pushl %eax\n"); } }
   }
   return;
  } else if(tk==T_LBKT){
@@ -1143,9 +1173,13 @@ if(tk==T_ID){
    if(tk!=T_RBKT){ se(); }
    nx();
    opn=q;
-   ostr("    popl %ecx\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_st[s]-1]); ostr("\n    mul x1, x1, x2\n");
+    if(so[s]<0){ ostr("    sub x2, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x2, x29, #"); oint(so[s]); ostr("\n"); }
+    ostr("    add x2, x2, x1\n"); }
+   else if(g_am==1){ ostr("    popq %rcx\n    imulq $"); oint(stsz[so_st[s]-1]); ostr(", %rcx\n    leaq "); oint(so[s]); ostr("(%rbp,%rcx), %rdx\n"); }
+   else { ostr("    popl %ecx\n");
    ostr("    imull $"); oint(stsz[so_st[s]-1]); ostr(", %ecx\n");
-   ostr("    leal "); oint(so[s]); ostr("(%ebp,%ecx), %edx\n");
+   ostr("    leal "); oint(so[s]); ostr("(%ebp,%ecx), %edx\n"); }
    if(tk==T_DOT){
     csid=so_st[s]-1;
     nx();
@@ -1165,7 +1199,11 @@ if(tk==T_ID){
     if(tk!=T_ASSIGN){ se(); }
     nx();
     p_a();
-    if(g_am==1){ ostr("    popq %rax\n");
+    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n");
+    if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+    if(fl==1){ ostr("    strb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+    else { ostr("    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+   else if(g_am==1){ ostr("    popq %rax\n");
     if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
     if(fl==1){ ostr("    movb %al, (%rdx)\n    pushq %rax\n"); }
     else { ostr("    movq %rax, (%rdx)\n    pushq %rax\n"); } }
@@ -1203,7 +1241,11 @@ if(tk==T_ID){
     if(tk!=T_ASSIGN){ se(); }
     nx();
     p_a();
-    if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n    popq %rdx\n");
+    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    mov x3, #"); oint(stsz[so_pst[s]-1]); ostr("\n    mul x1, x1, x3\n    add x2, x2, x1\n");
+    if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+    if(fl==1){ ostr("    strb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+    else { ostr("    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+   else if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n    popq %rdx\n");
     ostr("    imulq $"); oint(stsz[so_pst[s]-1]); ostr(", %rcx\n    addq %rcx, %rdx\n");
     if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
     if(fl==1){ ostr("    movb %al, (%rdx)\n    pushq %rax\n"); }
@@ -1225,14 +1267,20 @@ if(tk==T_ID){
    if(tk==T_ASSIGN){
     nx();
     p_a();
-    if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n    popq %rdx\n");
+    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n");
+     if(so_t[s]==1){ ostr("    strb w0, [x2, x1]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x2, x2, x1\n    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n    popq %rdx\n");
      if(so_t[s]==1){ ostr("    movb %al, (%rdx,%rcx)\n    pushq %rax\n"); }
      else { ostr("    imulq $8, %rcx\n    addq %rcx, %rdx\n    movq %rax, (%rdx)\n    pushq %rax\n"); } }
     else { ostr("    popl %eax\n    popl %ecx\n    popl %edx\n");
      if(so_t[s]==1){ ostr("    movb %al, (%edx,%ecx)\n    pushl %eax\n"); }
      else { ostr("    imull $4, %ecx\n    addl %ecx, %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); } }
    } else {
-    if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
+    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n");
+     if(so_t[s]==1){ ostr("    ldrb w0, [x0, x1]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
      if(so_t[s]==1){ ostr("    movzbq (%rax,%rcx), %rax\n    pushq %rax\n"); }
      else { ostr("    imulq $8, %rcx\n    addq %rcx, %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } }
     else { ostr("    popl %ecx\n    popl %eax\n");
@@ -1261,7 +1309,11 @@ if(tk==T_ID){
      opn=q;
      if(tk==T_ASSIGN){
       nx(); p_a();
-      if(g_am==1){ ostr("    popq %rax\n    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+      if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(col); ostr("\n    mul x1, x1, x4\n    mov x4, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x4\n    add x1, x1, x2\n    add x1, x1, x3\n");
+       if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+       if(so_t[s]==1){ ostr("    add x4, x4, x1\n    strb w0, [x4]\n    mov x0, x0\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+       else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+      else if(g_am==1){ ostr("    popq %rax\n    popq %rdi\n    popq %rdx\n    popq %rcx\n");
        ostr("    imulq $"); oint(col); ostr(", %rcx\n");
        ostr("    imulq $"); oint(so_p2[s]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n");
        if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%rbp,%rcx)\n    movzbq %al, %rax\n    pushq %rax\n"); }
@@ -1272,7 +1324,11 @@ if(tk==T_ID){
        if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%ebp,%ecx)\n    movzbl %al, %eax\n    pushl %eax\n"); }
        else { ostr("    movl %eax, "); oint(so[s]); ostr("(%ebp,%ecx,4)\n    pushl %eax\n"); } }
      } else {
-      if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+      if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(col); ostr("\n    mul x1, x1, x4\n    mov x4, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x4\n    add x1, x1, x2\n    add x1, x1, x3\n");
+       if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+       if(so_t[s]==1){ ostr("    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+       else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+      else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
        ostr("    imulq $"); oint(col); ostr(", %rcx\n");
        ostr("    imulq $"); oint(so_p2[s]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n");
        if(so_t[s]==1){ ostr("    movzbq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); }
@@ -1289,7 +1345,11 @@ if(tk==T_ID){
     if(tk==T_ASSIGN){
      nx();
      p_a();
-     if(g_am==1){ ostr("    popq %rax\n    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(col); ostr("\n    mul x1, x1, x4\n    add x1, x1, x2\n");
+      if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+      if(so_t[s]==1){ ostr("    add x4, x4, x1\n    strb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+     else if(g_am==1){ ostr("    popq %rax\n    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(col); ostr(", %rcx\n    addq %rdx, %rcx\n");
       if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%rbp,%rcx)\n    movzbq %al, %rax\n    pushq %rax\n"); }
       else { ostr("    movq %rax, "); oint(so[s]); ostr("(%rbp,%rcx,8)\n    pushq %rax\n"); } }
@@ -1298,7 +1358,11 @@ if(tk==T_ID){
       if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%ebp,%ecx)\n    movzbl %al, %eax\n    pushl %eax\n"); }
       else { ostr("    movl %eax, "); oint(so[s]); ostr("(%ebp,%ecx,4)\n    pushl %eax\n"); } }
     } else {
-     if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(col); ostr("\n    mul x1, x1, x4\n    add x1, x1, x2\n");
+      if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+      if(so_t[s]==1){ ostr("    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+     else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(col); ostr(", %rcx\n    addq %rdx, %rcx\n");
       if(so_t[s]==1){ ostr("    movzbq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); }
       else { ostr("    movq "); oint(so[s]); ostr("(%rbp,%rcx,8), %rax\n    pushq %rax\n"); } }
@@ -1313,14 +1377,22 @@ if(tk==T_ID){
    if(tk==T_ASSIGN){
     nx();
     p_a();
-    if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n");
+     if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+     if(so_t[s]==1){ ostr("    add x4, x4, x1\n    strb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n");
      if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%rbp,%rcx)\n    movzbq %al, %rax\n    pushq %rax\n"); }
      else { ostr("    movq %rax, "); oint(so[s]); ostr("(%rbp,%rcx,8)\n    pushq %rax\n"); } }
     else { ostr("    popl %eax\n    popl %ecx\n");
      if(so_t[s]==1){ ostr("    movb %al, "); oint(so[s]); ostr("(%ebp,%ecx)\n    movzbl %al, %eax\n    pushl %eax\n"); }
      else { ostr("    movl %eax, "); oint(so[s]); ostr("(%ebp,%ecx,4)\n    pushl %eax\n"); } }
    } else {
-    if(g_am==1){ ostr("    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n");
+     if(so[s]<0){ ostr("    sub x4, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x4, x29, #"); oint(so[s]); ostr("\n"); }
+     if(so_t[s]==1){ ostr("    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rcx\n");
      if(so_t[s]==1){ ostr("    movzbq "); oint(so[s]); ostr("(%rbp,%rcx), %rax\n    pushq %rax\n"); }
      else { ostr("    movq "); oint(so[s]); ostr("(%rbp,%rcx,8), %rax\n    pushq %rax\n"); } }
     else { ostr("    popl %ecx\n");
@@ -1337,7 +1409,8 @@ if(tk==T_ID){
    if(tk!=T_RBKT){ se(); }
    nx();
    opn=q;
-   if(g_am==1){ ostr("    popq %rcx\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[gstt[g]]); ostr("\n    mul x1, x1, x2\n    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n    add x2, x2, x1\n"); }
+   else if(g_am==1){ ostr("    popq %rcx\n");
     ostr("    imulq $"); oint(stsz[gstt[g]]); ostr(", %rcx\n");
     ostr("    leaq g"); oint(g); ostr("(%rcx), %rdx\n"); }
    else { ostr("    popl %ecx\n");
@@ -1362,7 +1435,11 @@ if(tk==T_ID){
    if(tk!=T_ASSIGN){ se(); }
    nx();
    p_a();
-   if(g_am==1){ ostr("    popq %rax\n");
+   if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n");
+    if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+    if(fl==1){ ostr("    strb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+    else { ostr("    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+   else if(g_am==1){ ostr("    popq %rax\n");
     if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
     if(fl==1){ ostr("    movb %al, (%rdx)\n    pushq %rax\n"); }
     else { ostr("    movq %rax, (%rdx)\n    pushq %rax\n"); } }
@@ -1396,7 +1473,10 @@ if(tk==T_ID){
     if(tk==T_ASSIGN){
      nx();
      p_a();
-     if(g_am==1){ ostr("    popq %rax\n    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x4\n    mov x4, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x4\n    add x1, x1, x2\n    add x1, x1, x3\n    adrp x4, g"); oint(g); ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n");
+      if(gst[g]==1){ ostr("    add x4, x4, x1\n    strb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+     else if(g_am==1){ ostr("    popq %rax\n    popq %rdi\n    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
       ostr("    imulq $"); oint(gcol2[g]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n");
       if(gst[g]==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rdx\n    movb %al, (%rdx)\n    pushq %rax\n"); }
@@ -1407,7 +1487,10 @@ if(tk==T_ID){
       if(gst[g]==1){ ostr("    leal g"); oint(g); ostr("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); }
       else { ostr("    imull $4, %ecx\n    leal g"); oint(g); ostr("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); } }
     } else {
-     if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
+     if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x4\n    mov x4, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x4\n    add x1, x1, x2\n    add x1, x1, x3\n    adrp x4, g"); oint(g); ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n");
+      if(gst[g]==1){ ostr("    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+      else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+     else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
       ostr("    imulq $"); oint(gcol2[g]); ostr(", %rdx\n    addq %rdx, %rcx\n    addq %rdi, %rcx\n");
       if(gst[g]==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); }
@@ -1424,7 +1507,10 @@ if(tk==T_ID){
    if(tk==T_ASSIGN){
     nx();
     p_a();
-    if(g_am==1){ ostr("    popq %rax\n    popq %rdx\n    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x4\n    add x1, x1, x2\n    adrp x4, g"); oint(g); ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n");
+     if(gst[g]==1){ ostr("    add x4, x4, x1\n    strb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rax\n    popq %rdx\n    popq %rcx\n");
      ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n    addq %rdx, %rcx\n");
      if(gst[g]==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rdx\n    movb %al, (%rdx)\n    pushq %rax\n"); }
      else { ostr("    imulq $8, %rcx\n    leaq g"); oint(g); ostr("(%rcx), %rdx\n    movq %rax, (%rdx)\n    pushq %rax\n"); } }
@@ -1433,7 +1519,10 @@ if(tk==T_ID){
      if(gst[g]==1){ ostr("    leal g"); oint(g); ostr("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); }
      else { ostr("    imull $4, %ecx\n    leal g"); oint(g); ostr("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); } }
    } else {
-    if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
+    if(g_ar==1){ ostr("    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x4\n    add x1, x1, x2\n    adrp x4, g"); oint(g); ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n");
+     if(gst[g]==1){ ostr("    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){ ostr("    popq %rdx\n    popq %rcx\n");
      ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n    addq %rdx, %rcx\n");
      if(gst[g]==1){ ostr("    leaq g"); oint(g); ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); }
      else { ostr("    imulq $8, %rcx\n    leaq g"); oint(g); ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } }
@@ -1448,21 +1537,23 @@ if(tk==T_ID){
   if(tk==T_ASSIGN){
    nx();
    p_a();
-   if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n");
+   if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    adrp x4, g"); }
+   else if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n");
     if(gst[g]==1){ ostr("    leaq g"); } else { ostr("    imulq $8, %rcx\n    leaq g"); } }
    else { ostr("    popl %eax\n    popl %ecx\n");
     if(gst[g]==1){ ostr("    leal g"); } else { ostr("    imull $4, %ecx\n    leal g"); } }
    oint(g);
-   if(gst[g]==1){ if(g_am==1){ ostr("(%rcx), %rdx\n    movb %al, (%rdx)\n    pushq %rax\n"); } else { ostr("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); } }
-   else { if(g_am==1){ ostr("(%rcx), %rdx\n    movq %rax, (%rdx)\n    pushq %rax\n"); } else { ostr("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); } }
+   if(gst[g]==1){ if(g_ar==1){ ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n    add x4, x4, x1\n    strb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rdx\n    movb %al, (%rdx)\n    pushq %rax\n"); } else { ostr("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); } }
+   else { if(g_ar==1){ ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n    lsl x1, x1, #3\n    add x4, x4, x1\n    str x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rdx\n    movq %rax, (%rdx)\n    pushq %rax\n"); } else { ostr("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); } }
   } else {
-   if(g_am==1){ ostr("    popq %rcx\n");
+   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    adrp x4, g"); }
+   else if(g_am==1){ ostr("    popq %rcx\n");
     if(gst[g]==1){ ostr("    leaq g"); } else { ostr("    imulq $8, %rcx\n    leaq g"); } }
    else { ostr("    popl %ecx\n");
     if(gst[g]==1){ ostr("    leal g"); } else { ostr("    imull $4, %ecx\n    leal g"); } }
    oint(g);
-   if(gst[g]==1){ if(g_am==1){ ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
-   else { if(g_am==1){ ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
+   if(gst[g]==1){ if(g_ar==1){ ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n    add x4, x4, x1\n    ldrb w0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rax\n    movzbq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); } }
+   else { if(g_ar==1){ ostr("\n    add x4, x4, :lo12:g"); oint(g); ostr("\n    lsl x1, x1, #3\n    add x4, x4, x1\n    ldr x0, [x4]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("(%rcx), %rax\n    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
    aw=0; e_expr();
   }
   return;
@@ -1493,10 +1584,18 @@ if(tk==T_ID){
   if(tk!=T_ASSIGN){ se(); }
   nx();
   p_a();
-  ostr("    popl %eax\n    popl %ecx\n");
+  if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n");
+   if(s!=-1){ if(so[s]<0){ ostr("    sub x2, x29, #"); oint(0-so[s]); ostr("\n    ldr x2, [x2]\n"); } else { ostr("    add x2, x29, #"); oint(so[s]); ostr("\n    ldr x2, [x2]\n"); } }
+   else { ostr("    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n    ldr x2, [x2]\n"); }
+   ostr("    lsl x1, x1, #2\n    add x2, x2, x1\n    str x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+  else if(g_am==1){ ostr("    popq %rax\n    popq %rcx\n");
+   if(s!=-1){ ostr("    movq "); oint(so[s]); ostr("(%rbp), %rdx\n"); }
+   else { ostr("    movq g"); oint(g); ostr(", %rdx\n"); }
+   ostr("    imulq $4, %rcx\n    addq %rcx, %rdx\n    movq %rax, (%rdx)\n    pushq %rax\n"); }
+  else { ostr("    popl %eax\n    popl %ecx\n");
   if(s!=-1){ ostr("    movl "); oint(so[s]); ostr("(%ebp), %edx\n"); }
   else { ostr("    movl g"); oint(g); ostr(", %edx\n"); }
-  ostr("    imull $4, %ecx\n    addl %ecx, %edx\n    movl %eax, (%edx)\n    pushl %eax\n");
+  ostr("    imull $4, %ecx\n    addl %ecx, %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); }
   return;
  } else {
  p_cmp();
@@ -1572,7 +1671,9 @@ while(1){
   } else if(tk==T_STR){ if(so_t[sc-1]==1){
    i2=tv; di=stp0[i2]; j=0;
    while(sts[di]!=0){
-    ostr("    movb $"); oint(sts[di]); ostr(", "); oint(so[sc-1]+j); ostr("(%ebp)\n");
+    if(g_ar==1){ ostr("    mov w1, #"); oint(sts[di]); ostr("\n    sub x0, x29, #"); oint(0-(so[sc-1]+j)); ostr("\n    strb w1, [x0]\n"); }
+    else if(g_am==1){ ostr("    movb $"); oint(sts[di]); ostr(", "); oint(so[sc-1]+j); ostr("(%rbp)\n"); }
+    else { ostr("    movb $"); oint(sts[di]); ostr(", "); oint(so[sc-1]+j); ostr("(%ebp)\n"); }
     di=di+1; j=j+1;
     if(j>=so_sz[sc-1]){ se(); }
    }
@@ -1582,8 +1683,12 @@ while(1){
    nx(); j=0;
    while(1){
     if(tk!=T_NUM){ se(); }
-    if(so_t[sc-1]==1){ ostr("    movb $"); oint(tv); ostr(", "); oint(so[sc-1]+j); ostr("(%ebp)\n"); }
-    else { ostr("    movl $"); oint(tv); ostr(", "); oint(so[sc-1]+(j*4)); ostr("(%ebp)\n"); }
+    if(so_t[sc-1]==1){ if(g_ar==1){ ostr("    mov w1, #"); oint(tv); ostr("\n    sub x0, x29, #"); oint(0-(so[sc-1]+j)); ostr("\n    strb w1, [x0]\n"); }
+     else if(g_am==1){ ostr("    movb $"); oint(tv); ostr(", "); oint(so[sc-1]+j); ostr("(%rbp)\n"); }
+     else { ostr("    movb $"); oint(tv); ostr(", "); oint(so[sc-1]+j); ostr("(%ebp)\n"); } }
+    else { if(g_ar==1){ ostr("    mov x1, #"); oint(tv); ostr("\n    sub x0, x29, #"); oint(0-(so[sc-1]+(j*16))); ostr("\n    str x1, [x0]\n"); }
+     else if(g_am==1){ ostr("    movl $"); oint(tv); ostr(", "); oint(so[sc-1]+(j*4)); ostr("(%rbp)\n"); }
+     else { ostr("    movl $"); oint(tv); ostr(", "); oint(so[sc-1]+(j*4)); ostr("(%ebp)\n"); } }
     nx(); j=j+1;
     if(tk==T_RBRACE){ nx(); break; }
     if(tk!=T_COMMA){ se(); }
@@ -1596,7 +1701,7 @@ while(1){
 } }
 void p_k(){
 nx();
-if(tk==T_SEMI){ ostr("    jmp .Lr"); oint(la); ostr("\n"); }
+if(tk==T_SEMI){ if(g_ar==1){ ostr("    b .Lr"); } else { ostr("    jmp .Lr"); } oint(la); ostr("\n"); }
 else { aw=1; opn=0; p_cmp(); if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    b .Lr"); }
  else if(g_am==1){ ostr("    popq %rax\n    jmp .Lr"); } else { ostr("    popl %eax\n    jmp .Lr"); } oint(la); ostr("\n"); }
 }
@@ -1701,7 +1806,7 @@ else if(tk==T_LBRACE){ ns=1;
  nx();
  while(tk!=T_RBRACE){ p_s(); }
  if(tk!=T_RBRACE){ se(); }
- if(sc>bstk[bd]){ n2=sc-bstk[bd]; if(g_am==1){ ostr("    addq $"); oint(n2*8); ostr(", %rsp\n"); } else { ostr("    addl $"); oint(n2*4); ostr(", %esp\n"); } }
+ if(sc>bstk[bd]){ n2=sc-bstk[bd]; if(g_ar==1){ ostr("    add sp, sp, #"); oint(n2*16); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(n2*8); ostr(", %rsp\n"); } else { ostr("    addl $"); oint(n2*4); ostr(", %esp\n"); } }
  sc=bstk[bd]; locn=blok[bd]; bd=bd-1;
  nx(); }
 else if(tk==T_IF){ ns=1; nx();
@@ -1733,9 +1838,10 @@ else if(tk==T_SWITCH){ ns=1;
  cr=cr+1; aw=1; opn=0; p_cmp(); cr=cr-1;
  if(tk!=T_RPAREN){ se(); }
  nx();
- if(g_am==1){ swt[swd]=0-((locn+1)*8); } else { swt[swd]=0-((locn+1)*4); }
+ if(g_ar==1){ swt[swd]=0-((locn+1)*16); } else if(g_am==1){ swt[swd]=0-((locn+1)*8); } else { swt[swd]=0-((locn+1)*4); }
 locn=locn+1;
-if(g_am==1){ ostr("    popq %rax\n    subq $8, %rsp\n    movq %rax, "); oint(swt[swd]); ostr("(%rbp)\n"); }
+if(g_ar==1){ ostr("    ldr x0, [sp]\n    sub x1, x29, #"); oint(0-swt[swd]); ostr("\n    str x0, [x1]\n"); }
+else if(g_am==1){ ostr("    popq %rax\n    subq $8, %rsp\n    movq %rax, "); oint(swt[swd]); ostr("(%rbp)\n"); }
 else { ostr("    popl %eax\n    subl $4, %esp\n    movl %eax, "); oint(swt[swd]); ostr("(%ebp)\n"); }
  t1=lc; lc=lc+1;
  if(tk!=T_LBRACE){ se(); }
@@ -1761,11 +1867,12 @@ else { ostr("    popl %eax\n    subl $4, %esp\n    movl %eax, "); oint(swt[swd])
  /* 发比较链（先于所有 case 体；未命中→default 或 end） */
  k=0;
  while(k<swc[swd]){
-  if(g_am==1){ ostr("    movq "); oint(swt[swd]); ostr("(%rbp), %rax\n    cmpq $"); oint(swcv[swd*32+k]); ostr(", %rax\n    je L"); oint(swlb[swd*32+k]); ostr("\n"); }
+  if(g_ar==1){ ostr("    sub x0, x29, #"); oint(0-swt[swd]); ostr("\n    ldr x0, [x0]\n    mov x1, #"); oint(swcv[swd*32+k]); ostr("\n    cmp x0, x1\n    b.eq L"); oint(swlb[swd*32+k]); ostr("\n"); }
+  else if(g_am==1){ ostr("    movq "); oint(swt[swd]); ostr("(%rbp), %rax\n    cmpq $"); oint(swcv[swd*32+k]); ostr(", %rax\n    je L"); oint(swlb[swd*32+k]); ostr("\n"); }
   else { ostr("    movl "); oint(swt[swd]); ostr("(%ebp), %eax\n    cmpl $"); oint(swcv[swd*32+k]); ostr(", %eax\n    je L"); oint(swlb[swd*32+k]); ostr("\n"); }
   k=k+1; }
- if(swhas[swd]==1){ ostr("    jmp L"); oint(swdef[swd]); ostr("\n"); }
- else { ostr("    jmp L"); oint(t1); ostr("\n"); }
+ if(swhas[swd]==1){ if(g_ar==1){ ostr("    b L"); } else { ostr("    jmp L"); } oint(swdef[swd]); ostr("\n"); }
+else { if(g_ar==1){ ostr("    b L"); } else { ostr("    jmp L"); } oint(t1); ostr("\n"); }
  /* 恢复 body 流并解析（case 体按扫描序打标号；fallthrough 自然落入下一 case 体） */
  pos=sp; nx();
  if(swd>=16){ se(); } swd=swd+1;
@@ -1773,11 +1880,11 @@ else { ostr("    popl %eax\n    subl $4, %esp\n    movl %eax, "); oint(swt[swd])
  bd=bd+1; if(bd>=16){ se(); } bstk[bd]=sc; blok[bd]=locn;
  while(tk!=T_RBRACE){ p_s(); }
  if(tk!=T_RBRACE){ se(); }
- if(sc>bstk[bd]){ n2=sc-bstk[bd]; if(g_am==1){ ostr("    addq $"); oint(n2*8); ostr(", %rsp\n"); } else { ostr("    addl $"); oint(n2*4); ostr(", %esp\n"); } }
+ if(sc>bstk[bd]){ n2=sc-bstk[bd]; if(g_ar==1){ ostr("    add sp, sp, #"); oint(n2*16); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(n2*8); ostr(", %rsp\n"); } else { ostr("    addl $"); oint(n2*4); ostr(", %esp\n"); } }
  sc=bstk[bd]; locn=blok[bd]; bd=bd-1;
  ld=ld-1; swd=swd-1; locn=locn-1;
  em_lbl(t1);
- if(g_am==1){ ostr("    addq $8, %rsp\n"); } else { ostr("    addl $4, %esp\n"); }
+ if(g_ar==1){ ostr("    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    addq $8, %rsp\n"); } else { ostr("    addl $4, %esp\n"); }
  nx(); }
 else if(tk==T_CASE){ ns=1;
  if(swd<=0){ se(); }
@@ -1808,7 +1915,7 @@ else if(tk==T_FOR){ ns=1;
  if(tk!=T_SEMI){ se(); }
  nx(); /* cond */
  em_lbl(t1);
- if(tk==T_SEMI){ ostr("    pushl $1\n"); } else { aw=1; opn=0; p_cmp(); em_jz(t1+2); }
+ if(tk==T_SEMI){ if(g_ar==1){ ostr("    mov x0, #1\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else { ostr("    pushl $1\n"); } } else { aw=1; opn=0; p_cmp(); em_jz(t1+2); }
  if(tk!=T_SEMI){ se(); }
  nx(); /* inc 首 token（可能 ')' 空） */
  ip=tp;
@@ -1856,7 +1963,7 @@ else if(tk==T_CONTINUE){ ns=0;
  if(ld<=0){ se(); }
  em_jmp(lcs[ld-1]);
  nx(); }
-else { ns=0; p_a(); if(g_am==1){ ostr("    addq $8, %rsp\n"); } else { ostr("    addl $4, %esp\n"); } }
+else { ns=0; p_a(); if(g_ar==1){ ostr("    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    addq $8, %rsp\n"); } else { ostr("    addl $4, %esp\n"); } }
 if(ns==0){ if(tk!=T_SEMI){ se(); } }
 if(tk==T_SEMI){ nx(); } }
 void floop(){
@@ -2299,10 +2406,10 @@ ostr("    bl f"); oint(mn); ostr("\n");
 if(gpq<0){ ostr("    bl print_decimal\n    mov x0, #10\n    bl print_char\n"); }
 if(gpq>=0 && gpqv==0){ ostr("    bl print_decimal\n    mov x0, #10\n    bl print_char\n"); }
 ostr("    mov x0, #0\n    mov x8, #93\n    svc 0\n\nprint_decimal:\n    stp x29, x30, [sp, #-16]!\n    stp x19, x20, [sp, #-16]!\n    stp x21, x22, [sp, #-16]!\n");
-ostr("    cmp x0, #0\n    b.ge .Lpd_pos\n    mov x19, x0\n    mov x0, #45\n    bl print_char\n    neg x0, x19\n.Lpd_pos:\n    mov x19, x0\n");
+ostr("    cmp w0, #0\n    b.ge .Lpd_pos\n    mov w19, w0\n    mov x0, #45\n    bl print_char\n    neg w0, w19\n.Lpd_pos:\n    mov w19, w0\n");
 ostr("    adrp x20, runt_buf\n    add x20, x20, :lo12:runt_buf\n    add x20, x20, #15\n    mov w21, #0\n    strb w21, [x20]\n");
-ostr(".Lpd_loop:\n    mov x0, x19\n    mov x1, #10\n    sdiv x2, x0, x1\n    msub x0, x2, x1, x0\n    mov x19, x2\n");
-ostr("    add w0, w0, #48\n    sub x20, x20, #1\n    strb w0, [x20]\n    cmp x19, #0\n    b.ne .Lpd_loop\n");
+ostr(".Lpd_loop:\n    mov w0, w19\n    mov w1, #10\n    sdiv w2, w0, w1\n    msub w0, w2, w1, w0\n    mov w19, w2\n");
+ostr("    add w0, w0, #48\n    sub x20, x20, #1\n    strb w0, [x20]\n    cmp w19, #0\n    b.ne .Lpd_loop\n");
 ostr("    mov x0, #1\n    mov x1, x20\n    adrp x2, runt_buf\n    add x2, x2, :lo12:runt_buf\n    add x2, x2, #15\n    sub x2, x2, x20\n");
 ostr("    mov x8, #64\n    svc 0\n    ldp x21, x22, [sp], #16\n    ldp x19, x20, [sp], #16\n    ldp x29, x30, [sp], #16\n    ret\n\nprint_char:\n");
 ostr("    adrp x9, runt_cbuf\n    add x9, x9, :lo12:runt_cbuf\n    strb w0, [x9]\n    mov x0, #1\n    mov x1, x9\n    mov x2, #1\n    mov x8, #64\n    svc 0\n    ret\n\nprint_str:\n");
@@ -2313,10 +2420,10 @@ ostr("print_err:\n    stp x19, x20, [sp, #-16]!\n    stp x21, x22, [sp, #-16]!\n
 ostr(".Lpe_loop:\n    ldrb w22, [x20]\n    cbz w22, .Lpe_got\n    add x20, x20, #1\n    b .Lpe_loop\n.Lpe_got:\n    sub x21, x20, x19\n");
 ostr("    mov x0, #2\n    mov x1, x19\n    mov x2, x21\n    mov x8, #64\n    svc 0\n    ldp x21, x22, [sp], #16\n    ldp x19, x20, [sp], #16\n    ret\n\n");
 ostr("exit:\n    mov x8, #93\n    svc 0\n\nprint_int:\n    stp x29, x30, [sp, #-16]!\n    stp x19, x20, [sp, #-16]!\n    stp x21, x22, [sp, #-16]!\n");
-ostr("    cmp x0, #0\n    b.ge .Lpi_pos\n    mov x19, x0\n    mov x0, #45\n    bl print_char\n    neg x0, x19\n.Lpi_pos:\n    mov x19, x0\n");
+ostr("    cmp w0, #0\n    b.ge .Lpi_pos\n    mov w19, w0\n    mov x0, #45\n    bl print_char\n    neg w0, w19\n.Lpi_pos:\n    mov w19, w0\n");
 ostr("    adrp x20, runt_buf\n    add x20, x20, :lo12:runt_buf\n    add x20, x20, #15\n    mov w21, #0\n    strb w21, [x20]\n");
-ostr(".Lpi_loop:\n    mov x0, x19\n    mov x1, #10\n    sdiv x2, x0, x1\n    msub x0, x2, x1, x0\n    mov x19, x2\n");
-ostr("    add w0, w0, #48\n    sub x20, x20, #1\n    strb w0, [x20]\n    cmp x19, #0\n    b.ne .Lpi_loop\n");
+ostr(".Lpi_loop:\n    mov w0, w19\n    mov w1, #10\n    sdiv w2, w0, w1\n    msub w0, w2, w1, w0\n    mov w19, w2\n");
+ostr("    add w0, w0, #48\n    sub x20, x20, #1\n    strb w0, [x20]\n    cmp w19, #0\n    b.ne .Lpi_loop\n");
 ostr("    mov x0, #1\n    mov x1, x20\n    adrp x2, runt_buf\n    add x2, x2, :lo12:runt_buf\n    add x2, x2, #15\n    sub x2, x2, x20\n");
 ostr("    mov x8, #64\n    svc 0\n    ldp x21, x22, [sp], #16\n    ldp x19, x20, [sp], #16\n    ldp x29, x30, [sp], #16\n    ret\n\n.section .bss\nrunt_buf:  .space 16\nrunt_cbuf: .space 1\n");
 }
