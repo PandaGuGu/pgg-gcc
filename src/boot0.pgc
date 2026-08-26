@@ -11,7 +11,7 @@
    fi reverse search (shadow wins), bstk/blok block-base stack, pd same-scope collision check only.
    without any C/C++ compiler reference; ISO 9899:1990 6.1/6.2.1/6.3/6.6 */
 int pg_quiet=1;
-char src_buf[4096];
+char src_buf[65536];
 int src_len;
 int pos;
 int tk;
@@ -197,7 +197,7 @@ if(t==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    s
 if(t==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
 if(t==T_GE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); } }
 int iscm(int t){ if(t==T_EQ){ return 1; } if(t==T_NE){ return 1; } if(t==T_LT){ return 1; } if(t==T_LE){ return 1; } if(t==T_GT){ return 1; } if(t==T_GE){ return 1; } return 0; }
-int pr(int t){ if(t==T_UN){ return 3; } if(t==T_NOT){ return 3; } if(t==T_STAR){ return 2; } if(t==T_SLASH){ return 2; } if(t==T_PLUS){ return 1; } if(t==T_MINUS){ return 1; } return 0; }
+int pr(int t){ if(t==T_UN){ return 4; } if(t==T_NOT){ return 4; } if(t==T_STAR){ return 3; } if(t==T_SLASH){ return 3; } if(t==T_PLUS){ return 2; } if(t==T_MINUS){ return 2; } if(t==T_EQ||t==T_NE||t==T_LT||t==T_LE||t==T_GT||t==T_GE){ return 1; } if(t==T_AND){ return 0; } return -1; }
 void em_pop(int t){ if(iscm(t)==1){ em_cm(t); } else { em_o(t); } }
 void em_ld(int o){ print_str("    pushl "); print_int(o); print_str("(%ebp)\n"); }
 void es_(int o){ print_str("    popl %eax\n    movl %eax, "); print_int(o); print_str("(%ebp)\n    pushl %eax\n"); }
@@ -222,7 +222,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   ast[astp+56]=endp; astp=astp+57;
   q=opn; opn=0; n=0; d=0;
   while(1){ if(pos>=src_len){ se(); } c=src_buf[pos];
-   if(c==40){ d=d+1; pos=pos+1; }
+   if(c==34){ if(n==0){ n=1; argp[0]=pos; } pos=pos+1;
+    while(1){ if(pos>=src_len){ se(); } c=src_buf[pos];
+     if(c==92){ pos=pos+2; } else { if(c==34){ pos=pos+1; break; } pos=pos+1; } } }
+   else if(c==39){ if(n==0){ n=1; argp[0]=pos; } pos=pos+2; if(src_buf[pos-2]==92){ pos=pos+1; } }
+   else if(c==40){ d=d+1; pos=pos+1; }
    else if(c==41){ if(d==0){ endp=pos+1; pos=pos+1; break; } d=d-1; pos=pos+1; }
    else if(c==44){ if(d==0){ n=n+1; argp[n-1]=pos+1; pos=pos+1; } else { pos=pos+1; } }
    else { if(n==0){ n=1; argp[0]=pos; } pos=pos+1; } }
@@ -265,21 +269,21 @@ else if(tk==T_RPAREN){ if(aw==1){ se(); }
  aw=0; nx(); }
 else if(tk==T_AND||tk==T_OR){
  if(aw==1){ se(); }
- while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=0){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else if(tk==T_NOT){ if(aw==1){ if(opn>=40){ se(); } oq[opn]=T_NOT; opn=opn+1; nx(); } else { se(); } }
 else if(iscm(tk)==1){
  if(aw==1){ se(); }
- while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=0){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else if(tk==T_PLUS||tk==T_MINUS){
  if(aw==1){ if(tk==T_MINUS){ if(opn>=40){ se(); } oq[opn]=T_UN; opn=opn+1; nx(); } else { se(); } }
  else {
-  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
+  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
   if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); } }
 else if(tk==T_STAR||tk==T_SLASH){
  if(aw==1){ se(); }
- while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=2){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else { break; } }
 if(aw==1){ se(); }
@@ -307,14 +311,24 @@ if(tk==T_ID){
   nx(); nx();
   aw=1; e_expr();
   if(tk!=T_RBKT){ se(); }
-  nx(); nx();
+  nx();
   opn=q;
-  p_a();
-  print_str("    popl %eax\n    popl %ecx\n");
-  if(gst[g]==1){ print_str("    leal g"); } else { print_str("    imull $4, %ecx\n    leal g"); }
-  print_int(g);
-  if(gst[g]==1){ print_str("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); }
-  else { print_str("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); }
+  if(tk==T_ASSIGN){
+   nx();
+   p_a();
+   print_str("    popl %eax\n    popl %ecx\n");
+   if(gst[g]==1){ print_str("    leal g"); } else { print_str("    imull $4, %ecx\n    leal g"); }
+   print_int(g);
+   if(gst[g]==1){ print_str("(%ecx), %edx\n    movb %al, (%edx)\n    pushl %eax\n"); }
+   else { print_str("(%ecx), %edx\n    movl %eax, (%edx)\n    pushl %eax\n"); }
+  } else {
+   print_str("    popl %ecx\n");
+   if(gst[g]==1){ print_str("    leal g"); } else { print_str("    imull $4, %ecx\n    leal g"); }
+   print_int(g);
+   if(gst[g]==1){ print_str("(%ecx), %eax\n    movzbl (%eax), %eax\n    pushl %eax\n"); }
+   else { print_str("(%ecx), %eax\n    movl (%eax), %eax\n    pushl %eax\n"); }
+   aw=0; e_expr();
+  }
   return;
  } else {
   pos=sp; tk=T_ID; tp=stp; tl=stl;
@@ -335,6 +349,7 @@ while(1){
   i=i-1; }
  if(sc>=32){ se(); }
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
+ sn[sc*16+tl]=0;
  so[sc]=0-((locn+1)*4);
  locn=locn+1;
  sc=sc+1;
@@ -344,8 +359,8 @@ while(1){
 } }
 void p_k(){
 nx();
-aw=1; opn=0; p_cmp();
-print_str("    popl %eax\n    jmp .Lr"); print_int(la); print_str("\n");
+if(tk==T_SEMI){ print_str("    jmp .Lr"); print_int(la); print_str("\n"); }
+else { aw=1; opn=0; p_cmp(); print_str("    popl %eax\n    jmp .Lr"); print_int(la); print_str("\n"); }
 }
 void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp; int btl; int ns;
 aw=1; opn=0;
@@ -402,7 +417,11 @@ else if(tk==T_FOR){ ns=1;
  incf=0;
  if(tk!=T_RPAREN){ incf=1; d=0;
   while(1){ if(pos>=src_len){ se(); } t2=src_buf[pos];
-   if(t2==40){ d=d+1; pos=pos+1; }
+   if(t2==34){ pos=pos+1;
+    while(1){ if(pos>=src_len){ se(); } t2=src_buf[pos];
+     if(t2==92){ pos=pos+2; } else { if(t2==34){ pos=pos+1; break; } pos=pos+1; } } }
+   else if(t2==39){ pos=pos+2; if(src_buf[pos-2]==92){ pos=pos+1; } }
+   else if(t2==40){ d=d+1; pos=pos+1; }
    else if(t2==41){ if(d==0){ pos=pos+1; break; } d=d-1; pos=pos+1; }
    else { pos=pos+1; } } }
  nx(); /* body 起点 */
@@ -454,6 +473,7 @@ if(gfd()!=-1){ se(); }
 if(fsc>=64){ se(); }
 p=0;
 while(p<tl){ fns[fsc*16+p]=nm[p]; p=p+1; }
+fns[fsc*16+tl]=0;
 fnp[fsc]=0;
 if(tl==4){ if(nm[0]=='m'){ if(nm[1]=='a'){ if(nm[2]=='i'){ if(nm[3]=='n'){ mn=fsc; } } } } }
 print_str("f"); print_int(fsc); print_str(":\n");
@@ -469,6 +489,7 @@ while(tk!=T_RPAREN){
  if(tk==T_INT){ nx(); }
  if(tk!=T_ID){ se(); }
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
+ sn[sc*16+tl]=0;
  so[sc]=8+p*4;
  sc=sc+1;
  p=p+1;
@@ -500,28 +521,34 @@ if(fnfind()!=-1){ se(); }
 if(gfd()!=-1){ se(); }
 if(gsz>=128){ se(); }
 j=0; while(j<tl){ gan[gsz*16+j]=nm[j]; j=j+1; }
-if(tl==7){ if(nm[0]=='s'){ if(nm[1]=='r'){ if(nm[2]=='c'){ if(nm[3]=='_'){ if(nm[4]=='b'){ if(nm[5]=='u'){ if(nm[6]=='f'){ gsb=gsz; } } } } } } } }
-if(tl==7){ if(nm[0]=='s'){ if(nm[1]=='r'){ if(nm[2]=='c'){ if(nm[3]=='_'){ if(nm[4]=='l'){ if(nm[5]=='e'){ if(nm[6]=='n'){ gsl=gsz; } } } } } } } }
-if(tl==8){ if(nm[0]=='p'){ if(nm[1]=='g'){ if(nm[2]=='_'){ if(nm[3]=='q'){ if(nm[4]=='u'){ if(nm[5]=='i'){ if(nm[6]=='e'){ if(nm[7]=='t'){ gpq=gsz; } } } } } } } } }
+gan[gsz*16+tl]=0;
+if(tl==7 && nm[0]=='s' && nm[1]=='r' && nm[2]=='c' && nm[3]=='_' && nm[4]=='b' && nm[5]=='u' && nm[6]=='f'){ gsb=gsz; }
+if(tl==7 && nm[0]=='s' && nm[1]=='r' && nm[2]=='c' && nm[3]=='_' && nm[4]=='l' && nm[5]=='e' && nm[6]=='n'){ gsl=gsz; }
+if(tl==8 && nm[0]=='p' && nm[1]=='g' && nm[2]=='_' && nm[3]=='q' && nm[4]=='u' && nm[5]=='i' && nm[6]=='e' && nm[7]=='t'){ gpq=gsz; }
 gst[gsz]=g_ty; gn[gsz]=0;
 nx();
 if(tk==T_LBKT){
  nx(); if(tk!=T_NUM){ se(); } an=tv; if(an<=0){ se(); } nx();
  if(tk!=T_RBKT){ se(); } nx();
  pgvk(gsz,an,g_ty);
-} else if(tk==T_ASSIGN){
+ gsz=gsz+1;
+ return;
+}
+if(tk==T_ASSIGN){
  nx(); if(tk!=T_NUM){ se(); } v=tv; nx();
  if(gsz==gpq){ gpqv=v; }
  print_str("    .section .data\ng"); print_int(gsz); print_str(":\n    .long "); print_int(v); print_str("\n    .section .text\n");
-} else {
- pgbss(gsz);
+ gsz=gsz+1;
+ return;
 }
+pgbss(gsz);
 gsz=gsz+1;
 }
 void pglob(){
-while(1){
+pgv();
+while(tk==T_COMMA){
+ nx();
  pgv();
- if(tk==T_COMMA){ nx(); } else { break; }
 }
 if(tk!=T_SEMI){ se(); }
 nx();
@@ -552,13 +579,13 @@ while(tk!=T_END){
 void eh(){ int q; int i; int j;
 q=lc; lc=lc+2;
 print_str(".section .text\n.globl _start\n_start:\n");
-if(gsl>=0){ if(gsb>=0){
+if(gsl>=0 && gsb>=0){
  print_str("    movl g"); print_int(gsl); print_str(", %eax\n    testl %eax, %eax\n    jnz L"); print_int(q); print_str("\n");
  print_str("    movl $3, %eax\n    xorl %ebx, %ebx\n    leal g"); print_int(gsb); print_str(", %ecx\n    movl $"); print_int(gn[gsb]); print_str(", %edx\n    int $0x80\n    movl %eax, g"); print_int(gsl); print_str("\nL"); print_int(q); print_str(":\n");
-} }
+}
 print_str("    call f"); print_int(mn); print_str("\n");
 if(gpq<0){ print_str("    call print_decimal\n"); }
-if(gpq>=0){ if(gpqv==0){ print_str("    call print_decimal\n"); } }
+if(gpq>=0 && gpqv==0){ print_str("    call print_decimal\n"); }
 print_str("    movl $10, %eax\n    call print_char\n    movl $1, %eax\n    xorl %ebx, %ebx\n    int $0x80\n\nprint_decimal:\n    pushl %ebx\n    pushl %ecx\n    pushl %edx\n    pushl %esi\n    pushl %edi\n");
 print_str("    test %eax, %eax\n    jns .Lpd_pos\n    movl %eax, %esi\n    movl $'-', %eax\n    call print_char\n    movl %esi, %eax\n    negl %eax\n.Lpd_pos:\n    movl %eax, %edi\n    leal runt_buf+15, %esi\n    movb $0, (%esi)\n.Lpd_loop:\n");
 print_str("    movl %edi, %eax\n    xorl %edx, %edx\n    movl $10, %ebx\n    divl %ebx\n    movl %eax, %edi\n    addb $'0', %dl\n    decl %esi\n    movb %dl, (%esi)\n    test %edi, %edi\n    jnz .Lpd_loop\n    movl $4, %eax\n    movl $1, %ebx\n    movl %esi, %ecx\n");

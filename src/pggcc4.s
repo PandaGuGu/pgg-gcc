@@ -1231,10 +1231,10 @@ parse_block:
     call app_str
     call emit_line
 .Lpb_noalloc:
+    decl blk_depth
     movl blk_depth, %ecx
     movl blk_mbytes(,%ecx,4), %eax
     movl %eax, local_bytes
-    decl blk_depth
     movl blk_depth, %ecx
     movl blk_mark(,%ecx,4), %eax
     movl %eax, sym_count
