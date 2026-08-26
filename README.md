@@ -68,7 +68,8 @@
 | v3（P3） | ✅ v3 完成（15/15 自证通过） | 控制流：if/while/for、比较、块作用域（递归自证 fact(5)==120 → 语言图灵完备，B0 硬门槛达成；细则见 plan §4.3） |
 | v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过）；**P4-II T1–T7＋收口已在自举链落地，C90 全量达成（run_boot 232/232）**（2026-08-26） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**）；**二期**（C90 全量，链上推进）已含：const/volatile、指针声明符、三目 ?:、逗号、sizeof、位运算+%、switch/case/default、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号、局部初始化器、struct 多重指针 `->` 链 |
 | B2（自举支线） | ✅ B2a–g 完成，**自举成功**（232/232）；**B4 闭台通过、B5 已启用**（2026-08-26） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**→ **B3 达成**；**B4 煮蛋闭台通过**（bin0→bin1→bin2 逐字节固定点，tests/boot_b4.sh）；**B5 日常开发已切到自举链**（改 boot0.pgc → bin1 编 → run_boot 232 门；pggcc4 冻结为跨链参照；操作约定见 architecture-b2 §8.1） |
-| v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集），B5 起在自举链上继续 |
+| 移植 P1 | ✅ **P1-a 完成**（2026-08-26，链上）；📋 P1-b 待续 | 轻量 IR v0.1 值流化（D1b 决策，platform-portability §5.1）：boot0 发码改走 ostr/oint → IR 缓冲 → irgo 统一渲染；**run_boot 232/232、boot_b4 闭台全门 PASS、run.sh 72/72**；下一步 P1-b IR 指令语义化 → P2 AMD64 后端 |
+| v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集），B5 起在自举链上继续（Q5 已定：先移植 P1–P4 后特性 P5/C99） |
 | C++ | 📋 待办（backlog） | 待 C 系列成熟后启动：从 C++98 起实现（类、重载、模板…），IR/代码生成复用 C 侧 |
 
 > v0–v4 细则见 plan §4（v4 = P4 一期，§4.4；P4 二期及 P5–P8 特性集见 plan §5）。每阶段设计可调起 Winston 架构师评审把关。
