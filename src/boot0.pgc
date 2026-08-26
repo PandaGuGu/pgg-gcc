@@ -102,7 +102,15 @@
    （&a[0]/&a[i][j][k]/&s.m/&var，leaq/imulq+%rbp）、三目 testq、块回收 addq $8k、switch 临时槽
    subq $8、表达式尾声 addq $8、struct 指针局部/初始化器 subq $8。tests/run_amd.sh 30/30
    （含 struct-rw/glob/char/param/arr/nest/union/copy/arrow/multi-arrow/addr）。i386 链零变化
-   （三线全绿）。待续：P2-b 块4（数据段初始化器/switch case/全局 struct 数组初值等罕见路径）。 */
+   （三线全绿）。待续：P2-b 块4（数据段初始化器/switch case/全局 struct 数组初值等罕见路径）。
+   P2-b 块4 (2026-08-26, chain): 电源 heh 罕见路径——switch 比较链（movq swt(%rbp),%rax + cmpq）、
+   全局数据段布局统一：int 数组/标量 8 字节（.quad/.space an*8/pgbss 8）、struct 内部 4 字节
+   布局保持（.long/stsz、pginit struct 层 .long）；pginit int 层 .quad。tests/run_amd.sh 42/42
+   （++switch/glob-init/struct-arr/struct-init/3D/逻辑/void/逗号 等）。全局布局规则：int 元素
+   8B（.quad/.space an*8），struct 内部 4B（.long/stsz）。i386 链零变化（三线全绿）。
+   P2-b 完成：run_amd 42 用例覆盖常量/算术/调用/递归/打印/局部/全局/字符/循环/逗号/struct/union/
+   ->/&/switch/enum/typedef/位运算/三目/3D 数组/初始化器 全 64 位化。待续：P3 双目标闭台
+   （argv[1]→g_am 运行时接线→bin_amd 直编 boot0.pgc 闭台）+ 数据段细节复核。 */
 int pg_quiet=1;
 char src_buf[131072];
 int src_len;
@@ -1676,7 +1684,8 @@ else { ostr("    popl %eax\n    subl $4, %esp\n    movl %eax, "); oint(swt[swd])
  /* 发比较链（先于所有 case 体；未命中→default 或 end） */
  k=0;
  while(k<swc[swd]){
-  ostr("    movl "); oint(swt[swd]); ostr("(%ebp), %eax\n    cmpl $"); oint(swcv[swd*32+k]); ostr(", %eax\n    je L"); oint(swlb[swd*32+k]); ostr("\n");
+  if(g_am==1){ ostr("    movq "); oint(swt[swd]); ostr("(%rbp), %rax\n    cmpq $"); oint(swcv[swd*32+k]); ostr(", %rax\n    je L"); oint(swlb[swd*32+k]); ostr("\n"); }
+  else { ostr("    movl "); oint(swt[swd]); ostr("(%ebp), %eax\n    cmpl $"); oint(swcv[swd*32+k]); ostr(", %eax\n    je L"); oint(swlb[swd*32+k]); ostr("\n"); }
   k=k+1; }
  if(swhas[swd]==1){ ostr("    jmp L"); oint(swdef[swd]); ostr("\n"); }
  else { ostr("    jmp L"); oint(t1); ostr("\n"); }
@@ -1858,12 +1867,12 @@ nx();
 }
 void pgbss(int kg){
 wpf("    .section .bss\ng", kg);
-ostr(":\n    .space 4\n    .section .text\n");
+if(g_am==1){ ostr(":\n    .space 8\n    .section .text\n"); } else { ostr(":\n    .space 4\n    .section .text\n"); }
 }
 void pgvk(int kg,int an,int ty){
 gn[kg]=an;
 if(ty==1){ wpf("    .section .bss\ng", kg); ostr(":\n    .space "); oint(an); ostr("\n    .section .text\n"); }
-else { wpf("    .section .bss\ng", kg); ostr(":\n    .space "); oint(an*4); ostr("\n    .section .text\n"); }
+else { if(g_am==1){ wpf("    .section .bss\ng", kg); ostr(":\n    .space "); oint(an*8); ostr("\n    .section .text\n"); } else { wpf("    .section .bss\ng", kg); ostr(":\n    .space "); oint(an*4); ostr("\n    .section .text\n"); } }
 }
 void pgst(int kg,int sz){
 wpf("    .section .bss\ng", kg);
@@ -1895,7 +1904,7 @@ if(dty>=2){
   else {
    if(tk!=T_NUM){ se(); }
    if(dty==1){ ostr("    .byte "); oint(tv); ostr("\n"); }
-   else { ostr("    .long "); oint(tv); ostr("\n"); }
+   else { if(g_am==1){ ostr("    .quad "); oint(tv); ostr("\n"); } else { ostr("    .long "); oint(tv); ostr("\n"); } }
    nx();
   }
   if(tk==T_RBRACE){ nx(); break; }
@@ -1985,7 +1994,8 @@ if(tk==T_LBKT){
 if(tk==T_ASSIGN){
  nx(); if(tk!=T_NUM){ se(); } v=tv; nx();
  if(gsz==gpq){ gpqv=v; }
- ostr("    .section .data\ng"); oint(gsz); ostr(":\n    .long "); oint(v); ostr("\n    .section .text\n");
+ if(g_am==1){ ostr("    .section .data\ng"); oint(gsz); ostr(":\n    .quad "); oint(v); ostr("\n    .section .text\n"); }
+ else { ostr("    .section .data\ng"); oint(gsz); ostr(":\n    .long "); oint(v); ostr("\n    .section .text\n"); }
  gsz=gsz+1;
  return;
 }
