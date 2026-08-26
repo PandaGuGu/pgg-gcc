@@ -24,9 +24,14 @@
 > **2026-08-25 无蛋引导**：用户决策"彻底无蛋"——pggcc 不再依赖任何 C/C++ 编译器作为构建蛋，
 > 编译器本体由**手写 i386 汇编**（stage-0，无 libc）经 `as`/`ld` 直接构建；环境内 gcc 已卸载。
 > v0 无蛋架构评审见 [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md)。
+>
+> **2026-08-26 自举成功**：B2 自举支线（B2a–g）完成——用 pggcc 语言书写的编译器本体 `src/boot0.pgc`
+> 经手写汇编 stage-4（`pggcc4`）编译得 `bin0`，`bin0` 成功编译 `boot0.pgc` 自身（258KB .s），
+> 二次自举产物行为一致、再编回稳（B3 阶段条件达成）。方案与执行结果见
+> [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md)。
 
 - 许可证：MIT
-- 语言：目标 C（编译器本体以无蛋方式从 i386 汇编层起步，见基线 §6）
+- 语言：目标 C（编译器本体以无蛋方式从 i386 汇编层起步，见基线 §6；当前已可用 pggcc 语言自举，见 architecture-b2）
 - 平台：Windows / Linux / macOS
 
 ## 文档导航
@@ -36,9 +41,11 @@
 | [docs/design/experiment-baseline.md](docs/design/experiment-baseline.md) | **实验与环境基线**：实验定义、硬约束（红线）、环境清单（WSL 工具链）、自研/对照两套流程、§6 无蛋引导策略 |
 | [docs/design/plan-language-features.md](docs/design/plan-language-features.md) | **语言特性实现计划**：C90→C23 / C++98→26 特性台账；§4 P0–P3 可直接开工细则（词法/文法/语义/发码/自证点）；§6 自举路线（生蛋时机决策 + 里程碑 B0–B6） |
 | [docs/design/architecture-v0-eggfree.md](docs/design/architecture-v0-eggfree.md) | **v0 无蛋架构评审**（Winston）：设计权衡 T1–T5、里程碑 M1–M4、验收门、§7 接口定标 |
+| [docs/design/architecture-b2-bootstrap.md](docs/design/architecture-b2-bootstrap.md) | **B2 自举重写方案**（B0 决策点提交件＋执行结果）：D1–D3 决策、B2-P0 模板扩展、boot0 自语言面、分步 B2a–g 自证与自举成功记录、B3/B4/B5 承接 |
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
-| [tests/run.sh](tests/run.sh) | **自证测试管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值 |
+| [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
+| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **90/90** |
 
 ## 路线图
 
@@ -48,8 +55,9 @@
 | v1（P1） | ✅ v1 完成（10/10 自证通过） | 变量声明与赋值（stdin 程序文本；`int` 声明、`=` 链式赋值、符号表、栈帧局部变量、末语句值打印；细则见 plan §4.1） |
 | v2（P2） | ✅ v2 完成（11/11 自证通过） | 函数定义与调用（`int` 函数/参数表/`return`；cdecl 实参从右到左压栈；`main` 入口打印返回值；函数级作用域；细则见 plan §4.2） |
 | v3（P3） | ✅ v3 完成（15/15 自证通过） | 控制流：if/while/for、比较、块作用域（递归自证 fact(5)==120 → 语言图灵完备，B0 硬门槛达成；细则见 plan §4.3） |
-| v4（P4 一期） | 📋 细则已定 | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释（对标 subC；细则见 plan §4.4）；二期 = C90 余项 struct/enum/…（plan §5） |
-| v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集） |
+| v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**） |
+| B2（自举支线） | ✅ B2a–g 完成，**自举成功**（90/90） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**（258KB .s），二次自举产物行为一致 → **B3 阶段条件达成**；下一步 B4 闭台煮蛋验证、B5 切自举链（见 architecture-b2 §8） |
+| v5+（P5–P8） | 📋 待定 | 按版本序吸收 C99 / C11 / C17 / C23（plan §5 核心特性集），B5 起在自举链上继续 |
 | C++ | 📋 待办（backlog） | 待 C 系列成熟后启动：从 C++98 起实现（类、重载、模板…），IR/代码生成复用 C 侧 |
 
 > v0–v4 细则见 plan §4（v4 = P4 一期，§4.4；P4 二期及 P5–P8 特性集见 plan §5）。每阶段设计可调起 Winston 架构师评审把关。
@@ -58,8 +66,8 @@
 
 `
 pgg-gcc/
-├── src/          # 编译器源码
-├── tests/        # 测试用例
+├── src/          # 编译器源码（pggcc0–4.s 手写汇编 stage；boot0.pgc 自举编译器源码）
+├── tests/        # 测试用例与自证管线（run.sh 主链 / run_boot.sh 自举支线）
 ├── docs/         # 设计文档与笔记
 ├── ORIGIN.md     # 实现来源声明（证明不抄袭 GCC）
 └── README.md     # 本文件
@@ -68,16 +76,24 @@ pgg-gcc/
 ## 构建
 
 ```bash
-# v3 版本（无蛋引导：手写汇编 stage-3，不调用任何 C/C++ 编译器；控制流 if/while/for、比较、块作用域，2026-08-25 完成）
-as --32 -o build/pggcc3.o src/pggcc3.s
-ld -m elf_i386 -o build/pggcc3 build/pggcc3.o
-echo "int fact(int n) { if (n<=1) return 1; return n*fact(n-1); } int main() { return fact(5); }" | ./build/pggcc3
+# 主链：手写汇编 stage，无蛋引导（不调用任何 C/C++ 编译器）
+# v4.1 版本（stage-4：类型系统核心子集 B1 + 模板扩展），2026-08-25 完成
+as --32 -o build/pggcc4.o src/pggcc4.s
+ld -m elf_i386 -o build/pggcc4 build/pggcc4.o
+echo 'int main(){ int a; a=3; return a*4; }' | ./build/pggcc4   # 主链冒烟 → 12
+
+# 自举链：pggcc 语言写编译器本体（B2 自举支线，2026-08-26 自举成功）
+./build/pggcc4 < src/boot0.pgc > build/boot0.s          # 编译 boot0 源码
+as --32 -o build/bin0.o build/boot0.s
+ld -m elf_i386 -o build/bin0 build/bin0.o               # bin0 = B0 编译器
+./build/bin0 < src/boot0.pgc > build/boot0b.s           # bin0 自行编译自身 → 自举
 ```
 
 自证测试（WSL 内运行，不调用任何 C/C++ 编译器做行为对照）：
 
 ```bash
-bash tests/run.sh
+bash tests/run.sh        # 主链：v0–v4.1 全部用例，72/72
+bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，90/90
 ```
 
 ## 贡献者
