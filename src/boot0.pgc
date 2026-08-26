@@ -116,7 +116,14 @@
    as --64/ld 通过即 bin1_amd 可链接（自编译通路通）。发现 g_am 槽在 pggcc4 编译变体与
    bin_amd 自编译间解析错位（eh/irgo 读 g134 非 g161），sed 常量折叠 g_am==1→1==1 后
    selfamd.s 全 64 位（syscall×8/0 处 int 0x80），但 bin1_amd 运行时仍出 32 位模板——
-   待解：g_am 自举链传播（下一步：argv[1]→g_am 正式接线 或 pgv 对 g_am 初值正确发码）。 */
+   待解：g_am 自举链传播（下一步：argv[1]→g_am 正式接线 或 pgv 对 g_am 初值正确发码）。
+   P3 完成 (2026-08-26, chain): AMD64 双目标闭台达成——tests/boot_amd.sh：pggcc4→bin_amd
+   （g_am=1 常量折叠变体 sed）→ bin_amd 自编 boot0_amd.pgc→selfamd.s(804619B)→bin1_amd →
+   bin1_amd 自编→selfamd2.s→bin2_amd；门1 selfamd.s==selfamd2.s 逐字节（源码态固定点）、
+   门2 二进制可复现（ld .symtab 文件名噪声经唯一 .o 消除）、门4 三头行为矩阵 5/5；
+   bin_amd/bin1_amd 直出 amd64.s→as --64→ld→本机原生运行。g_am 传播原问题（eh 读 g134
+   vs g161）实为旧 build/bin1_amd 未清理——干净重跑后自举链全通。i386 链零变化（五线全绿：
+   boot_b4/boot_amd 闭台、run_boot 232、run.sh 72、run_amd 42）。 */
 int pg_quiet=1;
 char src_buf[131072];
 int src_len;

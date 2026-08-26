@@ -217,6 +217,16 @@ bin0（x86）直接产出目标 ISA 汇编，用目标平台的 binutils 汇编/
 > - **已知局限（P2-b 处理）**：argv[1]→g_am 运行时接线未做（现用 sed 临时变体验证）；透传文本
 >   （数组寻址/struct 链/全局寻址/数据段）AMD64 化未做——冒烟用例避开了这些面。
 > - 下一步 P2-b：透传句柄语义化为新操作码→IR 全覆盖→AMD64 渲染器只按操作码翻译（P3 前置）。
+>
+> **P2-b 完成（2026-08-26）**：全局/数组/指针/逗号/sizeof/struct/union/switch/enum/typedef/
+> 位运算/三目/3D/初始化器全 64 位化；全局布局规则：int 元素 8B（.quad/.space an*8/sizeof*8）、
+> struct 内部 4B（.long/stsz）；run_amd **42/42** 原生运行；i386 链零变化。
+>
+> **P3 完成（2026-08-26，AMD64 双目标闭台）**：tests/boot_amd.sh——pggcc4→bin_amd（g_am=1
+> 常量折叠变体）→ bin_amd 自编 boot0_amd.pgc→selfamd.s(804619B)→bin1_amd → bin1_amd 自编
+> →selfamd2.s→bin2_amd；**门1 selfamd.s==selfamd2.s 逐字节（源码态固定点）、门2 二进制可复现、
+> 门4 三头行为矩阵 5/5**。AMD64 自举闭台达成；i386 链零变化（五线全绿）。下一步 P4：ARM64
+> 后端（跨 binutils + qemu 已放行）。
 
 ## 6. 决策记录（Q1–Q5，2026-08-26 用户拍板）
 
