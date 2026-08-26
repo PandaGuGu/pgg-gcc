@@ -168,6 +168,77 @@ run_case "char c[3]; void setc(char *p, int v){ p[0]=v; } int main(){ setc(c,65)
 run_case "char g[4]; void put(char *s, int i){ g[i]=s[0]; } int main(){ put(\"Z\",2); return g[2]; }" 90
 run_case "int f(char *s){ return s[0]; } int main(){ return f(\"a\")+f(\"b\"); }" 195
 
+echo "== P4-II T1：const/volatile 吸收 + 指针声明符（多级 *、*+[N]；期望值手算） =="
+run_case "int const g=7; int main(){ const int x; x=5; volatile int y; y=x*g; return y; }" 35
+run_case "int f(const int a, volatile int b){ return a+b; } int main(){ return f(1,2); }" 3
+run_case "char const *s; int main(){ s=\"ab\"; return 1; }" 1
+run_case "int main(){ char *s; s=\"ab\"; return s[0]; }" 97
+run_case "int main(){ int *p; int **q; p=7; q=8; return p+q; }" 15
+run_case "int f(char *p){ return p[0]+p[1]; } int main(){ char *s; s=\"hi\"; return f(s); }" 209
+run_case "int *g; int main(){ g=5; return 1; }" 1
+run_case "int *a[3]; int main(){ a[0]=1; a[1]=2; a[2]=3; return a[0]+a[1]+a[2]; }" 6
+
+echo "== P4-II T2：三目 ?: + 逗号表达式 + sizeof（期望值手算） =="
+run_case "int main(){ return 1?7:9; }" 7
+run_case "int main(){ return 0?7:9; }" 9
+run_case "int main(){ int a; a=3; return a>2?a*2:a*3; }" 6
+run_case "int main(){ return (1?2:3) + (0?4:5); }" 7
+run_case "int main(){ int x; x=5; return x>0?(x<3?1:2):3; }" 2
+run_case "int main(){ int x; x=-1; return x>0?1:x<0?-1:0; }" -1
+run_case "int f(int a){ return a?1:2; } int main(){ return f(0)+f(9); }" 3
+run_case "int main(){ int a; int b; a=(1,2,3); b=7; return a+b; }" 10
+run_case "int main(){ int x; x=(1,2,3,9); return x; }" 9
+run_case "int main(){ int s; s=0; s=(s+1,s+2); return s; }" 2
+run_case "int main(){ return sizeof(int); }" 4
+run_case "int main(){ return sizeof(char); }" 1
+run_case "char c[4]; int ia[3]; int main(){ return sizeof(c)+sizeof(ia); }" 16
+run_case "int main(){ char *p; return sizeof(p); }" 4
+
+echo "== P4-II T3：位运算 & | ^ ~ << >> + % 取模（期望值手算；% 由旧错误用例转正） =="
+run_case "int main(){ return 2%3; }" 2
+run_case "int main(){ return 6%4; }" 2
+run_case "int main(){ return -7%3; }" -1
+run_case "int main(){ return 7%3 + 5%2; }" 2
+run_case "int main(){ return 12 & 10; }" 8
+run_case "int main(){ return 12 | 3; }" 15
+run_case "int main(){ return 12 ^ 6; }" 10
+run_case "int main(){ return ~0; }" -1
+run_case "int main(){ return 1 << 4; }" 16
+run_case "int main(){ return 256 >> 3; }" 32
+run_case "int main(){ return (1<<4) + (8>>1) + (5%3); }" 22
+run_case "int main(){ int a; a=(1<<3)|2; return a; }" 10
+run_case "int main(){ return 7 & 3; }" 3
+run_case "int main(){ return 1 | 2 | 4; }" 7
+run_case "int main(){ return 1|2&3; }" 3
+run_case "int main(){ return 1+2<<1; }" 6
+run_case "int main(){ return 5 ^ 1 ^ 4; }" 0
+run_case "int main(){ return ~5 & 3; }" 2
+
+echo "== P4-II T4：switch/case/default（fallthrough；期望值手算） =="
+run_case "int main(){ int x; x=2; switch(x){ case 1: return 10; case 2: return 20; case 3: return 30; } return 99; }" 20
+run_case "int main(){ int x; x=5; switch(x){ case 1: return 10; case 2: return 20; default: return 40; } }" 40
+run_case "int main(){ int x; x=1; switch(x){ case 1: break; case 2: return 20; } return 7; }" 7
+run_case "int main(){ int x; x=1; switch(x){ case 1: x=5; case 2: x=x+1; break; } return x; }" 6
+run_case "int main(){ int s; int i; s=0; for(i=0;i<4;i=i+1){ switch(i){ case 0: s=s+1; break; case 1: s=s+10; break; case 2: s=s+100; break; default: s=s+1000; } } return s; }" 1111
+run_case "int x; void f(int v){ switch(v){ case 65: x=1; break; default: x=2; } } int main(){ f(65); return x; }" 1
+run_case "int main(){ int x; x=3; switch(x){ case 1: return 10; case 3: return 30; case 2: return 20; } return 0; }" 30
+run_case "int main(){ int x; x=0; switch(x){ case 0: x=9; break; default: x=8; } return x; }" 9
+run_case "int main(){ int x; x=99; switch(x){ default: x=1; case 5: x=x*10; break; } return x; }" 10
+run_case "int main(){ int x; x=2; switch(x){ case 1: { int y; y=1; return y; } case 2: { int y; y=2; return y; } } return 0; }" 2
+run_case "int main(){ int x; x=1; switch(x){ case 1: switch(x){ case 1: return 11; default: return 12; } default: return 13; } }" 11
+
+echo "== P4-II T5：enum 枚举常量 + typedef 类型别名（期望值手算） =="
+run_case "enum { A, B, C }; int main(){ return A*100+B*10+C; }" 12
+run_case "enum { X=5, Y, Z }; int main(){ return X*100+Y*10+Z; }" 567
+run_case "enum E { P, Q }; int main(){ return Q; }" 1
+run_case "enum { RED, GRN, BLU }; int main(){ int c; c=GRN; switch(c){ case RED: return 1; case GRN: return 2; case BLU: return 3; } return 0; }" 2
+run_case "enum { A=10, B=20 }; int main(){ int x; x=A+B; return x; }" 30
+run_case "typedef int I; int main(){ I a; I b; a=3; b=4; return a+b; }" 7
+run_case "typedef char C; int main(){ C c; c=65; return c; }" 65
+run_case "typedef int I; int f(I a, I b){ return a*b; } int main(){ return f(3,4); }" 12
+run_case "typedef int I; I g; int main(){ g=9; return g; }" 9
+run_case "typedef int I; void f(I *p){ p[0]=5; } int g[2]; int main(){ f(g); return g[0]; }" 5
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
@@ -175,9 +246,8 @@ run_err "int f(){ return 1; } int f(){ return 2; } int main(){ return 0; }" 2
 run_err "int main(){ return f(3; }" 2
 run_err "int main(){ return 1 }" 2
 
-echo "== v3/B2d 错误用例（缺括号/非法算子） =="
+echo "== v3/B2d 错误用例（缺括号） =="
 run_err "int main(){ int i; for(i=0;i<3;{ i=i+1; } }" 2
-run_err "int main(){ return 2%3; }" 1
 
 echo "== v3/B2e 错误用例（同作用域重声明：同块 / 参数·函数体顶层） =="
 run_err "int main(){ int a; int a; return 0; }" 2

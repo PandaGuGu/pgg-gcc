@@ -14,11 +14,22 @@
    (movl $10/call print_char) emitted unconditionally -> boot0-built targets printed 1 stray
    "\n" even with pg_quiet=1 (pggcc4 v4.1 spec: skip value AND newline); fixed by gating
    newline alongside print_decimal -> bin0/bin1/bin2 self-compile outputs byte-identical.
-   B5-1 face (2026-08-26): char*/int* params (so_t/so_p typed param table in pfun; pd() locals
+   B5-1 face (2026-08-26): pointer params (so_t/so_p typed param table in pfun; pd() locals
    so_t/so_p=0), ptr-param subscript read/write in e_expr/p_a (fi_i = index lookup; fi() returns
-   slot OFFSET so[i], not index - new subscript paths must use fi_i), wpf(char*,int) self-used
+   slot OFFSET so[i], not index - new subscript paths must use fi_i), wpf(char-ptr,int) self-used
    to emit f%/g%/str% labels (literal args self-exercise). E5: pggcc4 MAX_STR 256->512
-   (136 unique literals x ~1.9 lex-replay > 256). run_boot 100/100, closure intact. */
+   (136 unique literals x ~1.9 lex-replay > 256). run_boot 100/100, closure intact.
+   P4-II (2026-08-26, chain): T1 const/volatile absorb + ptr declarators (multi-* & *+[N], gptr/pdlv);
+   T2 ternary ?: (tn/tbd/tbs, branches keep opn, RPAREN/tail-drain tolerate enclosing parens) +
+   comma-expr (ar==0 or inside parens) + sizeof (type/ident/global-array);
+   T3 bitwise & | ^ ~ << >> + % (C precedence pr 5..-4; idivl rem in %edx; shl/shr use %cl);
+   T4 switch/case/default (pre-scan case-consts -> compare chain + in-order case bodies, temp slot
+   per switch, break via lcs/lbl, fallthrough by body order; swcv/swlb depth-indexed flat arrays);
+   T5 enum consts (csn/csv + cstfind) + typedef aliases (tdn/tdb/tdp + tdfind) wired into
+   pd/pfun/pgv/ptop_one; E6 pggcc4 MAX_GLB 128->256 (boot0 131 globals incl T_* const line);
+   E6b boot0 own gst/gn/gptr 128->256 + gan 2048->4096 for self-compile. run_boot 160/160,
+   closure intact. Remaining P4-II: struct/union (T6), multidim arrays + full compound declarator
+   semantics (T7) - scoped, next rounds. */
 int pg_quiet=1;
 char src_buf[65536];
 int src_len;
@@ -29,7 +40,7 @@ int tp;
 int tl;
 int aw;
 int opn;
-int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16,T_EQ=17,T_NE=18,T_LT=19,T_LE=20,T_GT=21,T_GE=22,T_IF=23,T_ELSE=24,T_WHILE=25,T_FOR=26,T_DO=27,T_BREAK=28,T_CONTINUE=29,T_CHAR=30,T_LBKT=31,T_RBKT=32,T_NOT=33,T_AND=34,T_OR=35,T_STR=36,T_CHR=37,T_VOID=38;
+int T_END=0,T_NUM=1,T_PLUS=2,T_MINUS=3,T_STAR=4,T_SLASH=5,T_LPAREN=6,T_RPAREN=7,T_UN=8,T_ID=9,T_ASSIGN=10,T_SEMI=11,T_COMMA=12,T_INT=13,T_RETURN=14,T_LBRACE=15,T_RBRACE=16,T_EQ=17,T_NE=18,T_LT=19,T_LE=20,T_GT=21,T_GE=22,T_IF=23,T_ELSE=24,T_WHILE=25,T_FOR=26,T_DO=27,T_BREAK=28,T_CONTINUE=29,T_CHAR=30,T_LBKT=31,T_RBKT=32,T_NOT=33,T_AND=34,T_OR=35,T_STR=36,T_CHR=37,T_VOID=38,T_CONST=39,T_VOLATILE=40,T_QMARK=41,T_COLON=42,T_SIZEOF=43,T_PERCENT=44,T_BAND=45,T_BOR=46,T_XOR=47,T_TILDE=48,T_SHL=49,T_SHR=50,T_SWITCH=51,T_CASE=52,T_DEFAULT=53,T_ENUM=54,T_TYPEDEF=55;
 int oq[40];
 char eb[40];
 char sn[512];
@@ -52,11 +63,13 @@ int bd;
 int lcs[16];
 int lbl[16];
 int ld;
-char gan[2048];
-int gst[128];
-int gn[128];
+char gan[4096];
+int gst[256];
+int gn[256];
+int gptr[256];
 int gsz;
 int g_ty;
+int pdlv;
 char sts[16384];
 int stp0[512];
 int stc;
@@ -71,6 +84,25 @@ int argp[16];
 int endp;
 int ar;
 int cr;
+int tn;
+int tbd;
+int tbs;
+int swd;
+int swt[16];
+int swcv[256];
+int swlb[256];
+int swc[8];
+int swci[8];
+int swdef[8];
+int swhas[8];
+int cstc;
+char csn[512];
+int csv[32];
+int ev;
+int tdc;
+char tdn[256];
+int tdb[16];
+int tdp[16];
 int ast[1024];
 int astp;
 int wd(int at,int n){ if(n/10!=0){ at=wd(at,n/10); } eb[at]='0'+(n-(n/10)*10); return at+1; }
@@ -116,6 +148,20 @@ if(tl==9){
  if(nm[0]=='p'){ if(nm[1]=='r'){ if(nm[2]=='i'){ if(nm[3]=='n'){ if(nm[4]=='t'){ if(nm[5]=='_'){ if(nm[6]=='e'){ if(nm[7]=='r'){ if(nm[8]=='r'){ return 2; } } } } } } } } }
 } else if(tl==4){ if(nm[0]=='e'){ if(nm[1]=='x'){ if(nm[2]=='i'){ if(nm[3]=='t'){ return 3; } } } } }
 return -1; }
+int cstfind(){ int i,j;
+i=cstc-1;
+while(i>=0){
+ j=0; while(j<tl){ if(csn[i*16+j]!=nm[j]){ break; } j=j+1; }
+ if(j==tl){ if(csn[i*16+j]==0){ return i; } }
+ i=i-1; }
+return -1; }
+int tdfind(){ int i,j;
+i=tdc-1;
+while(i>=0){
+ j=0; while(j<tl){ if(tdn[i*16+j]!=nm[j]){ break; } j=j+1; }
+ if(j==tl){ if(tdn[i*16+j]==0){ return i; } }
+ i=i-1; }
+return -1; }
 void nx(){ int c; int j; int k;
 while(pos<src_len){ c=src_buf[pos];
  if(c==' '||c==9||c==10||c==13){ pos=pos+1; } else { break; } }
@@ -146,11 +192,19 @@ if(k==1){ tk=T_ID; tl=0;
  if(tl==3){ if(nm[0]=='i'){ if(nm[1]=='n'){ if(nm[2]=='t'){ tk=T_INT; } } } }
  if(tl==4){ if(nm[0]=='c'){ if(nm[1]=='h'){ if(nm[2]=='a'){ if(nm[3]=='r'){ tk=T_CHAR; } } } } }
  if(tl==4){ if(nm[0]=='v'){ if(nm[1]=='o'){ if(nm[2]=='i'){ if(nm[3]=='d'){ tk=T_VOID; } } } } }
+ if(tl==5){ if(nm[0]=='c'){ if(nm[1]=='o'){ if(nm[2]=='n'){ if(nm[3]=='s'){ if(nm[4]=='t'){ tk=T_CONST; } } } } } }
+ if(tl==8){ if(nm[0]=='v'){ if(nm[1]=='o'){ if(nm[2]=='l'){ if(nm[3]=='a'){ if(nm[4]=='t'){ if(nm[5]=='i'){ if(nm[6]=='l'){ if(nm[7]=='e'){ tk=T_VOLATILE; } } } } } } } } }
+ if(tl==6){ if(nm[0]=='s'){ if(nm[1]=='i'){ if(nm[2]=='z'){ if(nm[3]=='e'){ if(nm[4]=='o'){ if(nm[5]=='f'){ tk=T_SIZEOF; } } } } } } }
  if(tl==6){ if(nm[0]=='r'){ if(nm[1]=='e'){ if(nm[2]=='t'){ if(nm[3]=='u'){ if(nm[4]=='r'){ if(nm[5]=='n'){ tk=T_RETURN; } } } } } } }
  if(tl==2){ if(nm[0]=='i'){ if(nm[1]=='f'){ tk=T_IF; } } }
  if(tl==4){ if(nm[0]=='e'){ if(nm[1]=='l'){ if(nm[2]=='s'){ if(nm[3]=='e'){ tk=T_ELSE; } } } } }
  if(tl==5){ if(nm[0]=='w'){ if(nm[1]=='h'){ if(nm[2]=='i'){ if(nm[3]=='l'){ if(nm[4]=='e'){ tk=T_WHILE; } } } } } }
  if(tl==3){ if(nm[0]=='f'){ if(nm[1]=='o'){ if(nm[2]=='r'){ tk=T_FOR; } } } }
+ if(tl==6){ if(nm[0]=='s'){ if(nm[1]=='w'){ if(nm[2]=='i'){ if(nm[3]=='t'){ if(nm[4]=='c'){ if(nm[5]=='h'){ tk=T_SWITCH; } } } } } } }
+ if(tl==4){ if(nm[0]=='c'){ if(nm[1]=='a'){ if(nm[2]=='s'){ if(nm[3]=='e'){ tk=T_CASE; } } } } }
+ if(tl==7){ if(nm[0]=='d'){ if(nm[1]=='e'){ if(nm[2]=='f'){ if(nm[3]=='a'){ if(nm[4]=='u'){ if(nm[5]=='l'){ if(nm[6]=='t'){ tk=T_DEFAULT; } } } } } } } }
+ if(tl==4){ if(nm[0]=='e'){ if(nm[1]=='n'){ if(nm[2]=='u'){ if(nm[3]=='m'){ tk=T_ENUM; } } } } }
+ if(tl==7){ if(nm[0]=='t'){ if(nm[1]=='y'){ if(nm[2]=='p'){ if(nm[3]=='e'){ if(nm[4]=='d'){ if(nm[5]=='e'){ if(nm[6]=='f'){ tk=T_TYPEDEF; } } } } } } } }
  if(tl==2){ if(nm[0]=='d'){ if(nm[1]=='o'){ tk=T_DO; } } }
  if(tl==5){ if(nm[0]=='b'){ if(nm[1]=='r'){ if(nm[2]=='e'){ if(nm[3]=='a'){ if(nm[4]=='k'){ tk=T_BREAK; } } } } } }
  if(tl==8){ if(nm[0]=='c'){ if(nm[1]=='o'){ if(nm[2]=='n'){ if(nm[3]=='t'){ if(nm[4]=='i'){ if(nm[5]=='n'){ if(nm[6]=='u'){ if(nm[7]=='e'){ tk=T_CONTINUE; } } } } } } } } }
@@ -184,6 +238,8 @@ if(c=='/'){ if(pos+1<src_len){ if(src_buf[pos+1]==42){ pos=pos+2;
   tk=T_SLASH; pos=pos+1; return; }
 if(c=='('){ tk=T_LPAREN; pos=pos+1; return; }
 if(c==')'){ tk=T_RPAREN; pos=pos+1; return; }
+if(c=='?'){ tk=T_QMARK; pos=pos+1; return; }
+if(c==':'){ tk=T_COLON; pos=pos+1; return; }
 if(c=='['){ tk=T_LBKT; pos=pos+1; return; }
 if(c==']'){ tk=T_RBKT; pos=pos+1; return; }
 if(c==','){ tk=T_COMMA; pos=pos+1; return; }
@@ -191,10 +247,13 @@ if(c=='{'){ tk=T_LBRACE; pos=pos+1; return; }
 if(c=='}'){ tk=T_RBRACE; pos=pos+1; return; }
 if(c==';'){ tk=T_SEMI; pos=pos+1; return; }
 if(c=='='){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_EQ; pos=pos+1; return; } } tk=T_ASSIGN; return; }
-if(c=='&'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='&'){ tk=T_AND; pos=pos+1; return; } } ie(); }
-if(c=='|'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='|'){ tk=T_OR; pos=pos+1; return; } } ie(); }
-if(c=='<'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_LE; pos=pos+1; return; } } tk=T_LT; return; }
-if(c=='>'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_GE; pos=pos+1; return; } } tk=T_GT; return; }
+if(c=='&'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='&'){ tk=T_AND; pos=pos+1; return; } } tk=T_BAND; return; }
+if(c=='|'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='|'){ tk=T_OR; pos=pos+1; return; } } tk=T_BOR; return; }
+if(c=='<'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_LE; pos=pos+1; return; } if(src_buf[pos]=='<'){ tk=T_SHL; pos=pos+1; return; } } tk=T_LT; return; }
+if(c=='>'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_GE; pos=pos+1; return; } if(src_buf[pos]=='>'){ tk=T_SHR; pos=pos+1; return; } } tk=T_GT; return; }
+if(c=='%'){ tk=T_PERCENT; pos=pos+1; return; }
+if(c=='~'){ tk=T_TILDE; pos=pos+1; return; }
+if(c=='^'){ tk=T_XOR; pos=pos+1; return; }
 if(c=='!'){ pos=pos+1; if(pos<src_len){ if(src_buf[pos]=='='){ tk=T_NE; pos=pos+1; return; } } tk=T_NOT; return; }
 tk=T_NUM; ie(); }
 void em_p(int v){ print_str("    pushl $"); print_int(v); print_str("\n"); }
@@ -203,8 +262,15 @@ if(t==T_PLUS){ print_str("    popl %ecx\n    popl %eax\n    addl %ecx, %eax\n   
 if(t==T_MINUS){ print_str("    popl %ecx\n    popl %eax\n    subl %ecx, %eax\n    pushl %eax\n"); }
 if(t==T_STAR){ print_str("    popl %ecx\n    popl %eax\n    imull %ecx, %eax\n    pushl %eax\n"); }
 if(t==T_SLASH){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %eax\n"); }
+if(t==T_PERCENT){ print_str("    popl %ecx\n    popl %eax\n    cltd\n    idivl %ecx\n    pushl %edx\n"); }
+if(t==T_BAND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_BOR){ print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_XOR){ print_str("    popl %ecx\n    popl %eax\n    xorl %ecx, %eax\n    pushl %eax\n"); }
+if(t==T_SHL){ print_str("    popl %ecx\n    popl %eax\n    shll %cl, %eax\n    pushl %eax\n"); }
+if(t==T_SHR){ print_str("    popl %ecx\n    popl %eax\n    shrl %cl, %eax\n    pushl %eax\n"); }
 if(t==T_UN){ print_str("    popl %eax\n    negl %eax\n    pushl %eax\n"); }
 if(t==T_NOT){ print_str("    popl %eax\n    testl %eax, %eax\n    sete %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
+if(t==T_TILDE){ print_str("    popl %eax\n    notl %eax\n    pushl %eax\n"); }
 if(t==T_AND){ print_str("    popl %ecx\n    popl %eax\n    andl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); }
 if(t==T_OR){ print_str("    popl %ecx\n    popl %eax\n    orl %ecx, %eax\n    testl %eax, %eax\n    setne %al\n    movzbl %al, %eax\n    pushl %eax\n"); } }
 void em_cm(int t){
@@ -215,7 +281,7 @@ if(t==T_LE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    s
 if(t==T_GT){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setg %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); }
 if(t==T_GE){ print_str("    popl %ecx\n    popl %eax\n    cmpl %ecx, %eax\n    setge %al\n"); print_str("    movzbl %al, %eax\n    pushl %eax\n"); } }
 int iscm(int t){ if(t==T_EQ){ return 1; } if(t==T_NE){ return 1; } if(t==T_LT){ return 1; } if(t==T_LE){ return 1; } if(t==T_GT){ return 1; } if(t==T_GE){ return 1; } return 0; }
-int pr(int t){ if(t==T_UN){ return 4; } if(t==T_NOT){ return 4; } if(t==T_STAR){ return 3; } if(t==T_SLASH){ return 3; } if(t==T_PLUS){ return 2; } if(t==T_MINUS){ return 2; } if(t==T_EQ||t==T_NE||t==T_LT||t==T_LE||t==T_GT||t==T_GE){ return 1; } if(t==T_AND){ return 0; } return -1; }
+int pr(int t){ if(t==T_UN){ return 5; } if(t==T_NOT){ return 5; } if(t==T_TILDE){ return 5; } if(t==T_STAR){ return 4; } if(t==T_SLASH){ return 4; } if(t==T_PERCENT){ return 4; } if(t==T_PLUS){ return 3; } if(t==T_MINUS){ return 3; } if(t==T_SHL){ return 2; } if(t==T_SHR){ return 2; } if(t==T_EQ||t==T_NE||t==T_LT||t==T_LE||t==T_GT||t==T_GE){ return 1; } if(t==T_BAND){ return 0; } if(t==T_XOR){ return -1; } if(t==T_BOR){ return -2; } if(t==T_AND){ return -3; } return -4; }
 void em_pop(int t){ if(iscm(t)==1){ em_cm(t); } else { em_o(t); } }
 void em_ld(int o){ print_str("    pushl "); print_int(o); print_str("(%ebp)\n"); }
 void es_(int o){ print_str("    popl %eax\n    movl %eax, "); print_int(o); print_str("(%ebp)\n    pushl %eax\n"); }
@@ -223,7 +289,7 @@ void em_jz(int n){ print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); p
 void em_jnz(int n){ print_str("    popl %eax\n    testl %eax, %eax\n    jnz L"); print_int(n); print_str("\n"); }
 void em_jmp(int n){ print_str("    jmp L"); print_int(n); print_str("\n"); }
 void em_lbl(int n){ print_str("L"); print_int(n); print_str(":\n"); }
-void e_expr(){ int s; int sp; int stp; int stl; int q; int i; int j; int d; int c; int n; int g;
+void e_expr(){ int s; int sp; int stp; int stl; int q; int i; int j; int d; int c; int n; int g; int t1; int sz;
 while(1){
 if(tk==T_NUM){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
 else if(tk==T_CHR){ if(aw==0){ se(); } em_p(tv); aw=0; nx(); }
@@ -289,22 +355,27 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   aw=0;
   }
  } else { pos=sp; tk=T_ID; tp=stp; tl=stl;
+  i=cstfind();
+  if(i!=-1){ em_p(csv[i]); aw=0; nx(); }
+  else {
   s=fi(); if(s==-1){ g=gfd(); if(g<0){ se(); }
    if(gn[g]>0){ print_str("    leal g"); print_int(g); print_str(", %eax\n    pushl %eax\n"); }
    else { print_str("    movl g"); print_int(g); print_str(", %eax\n    pushl %eax\n"); }
   } else { em_ld(s); }
-  aw=0; nx(); } }
+  aw=0; nx(); } } }
 else if(tk==T_LPAREN){ if(aw==0){ se(); }
  if(opn>=40){ se(); } oq[opn]=T_LPAREN; opn=opn+1; aw=1; nx(); }
 else if(tk==T_RPAREN){ if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
- if(opn>0){ opn=opn-1; } else { if(ar>0){ break; } if(cr>0){ break; } se(); }
+ if(opn>0){ if(tbd>0){ if(opn-1>=tbd){ opn=opn-1; } else { break; } } else { opn=opn-1; } }
+ else { if(ar>0){ break; } if(cr>0){ break; } if(tbd>0){ break; } se(); }
  aw=0; nx(); }
 else if(tk==T_AND||tk==T_OR){
  if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
 else if(tk==T_NOT){ if(aw==1){ if(opn>=40){ se(); } oq[opn]=T_NOT; opn=opn+1; nx(); } else { se(); } }
+else if(tk==T_TILDE){ if(aw==1){ if(opn>=40){ se(); } oq[opn]=T_TILDE; opn=opn+1; nx(); } else { se(); } }
 else if(iscm(tk)==1){
  if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
@@ -314,13 +385,48 @@ else if(tk==T_PLUS||tk==T_MINUS){
  else {
   while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
   if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); } }
-else if(tk==T_STAR||tk==T_SLASH){
+else if(tk==T_STAR||tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR||tk==T_XOR){
  if(aw==1){ se(); }
  while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } if(pr(oq[opn-1])>=pr(tk)){ opn=opn-1; em_pop(oq[opn]); } else { break; } }
  if(opn>=40){ se(); } oq[opn]=tk; opn=opn+1; aw=1; nx(); }
+else if(tk==T_QMARK){ if(aw==1){ se(); }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
+ t1=lc; lc=lc+2;
+ print_str("    popl %eax\n    testl %eax, %eax\n    jz L"); print_int(t1); print_str("\n");
+ nx();
+ tbs=tbd; tbd=opn;
+ tn=tn+1; aw=1; e_expr(); tn=tn-1;
+ if(tk!=T_COLON){ se(); }
+ print_str("    jmp L"); print_int(t1+1); print_str("\nL"); print_int(t1); print_str(":\n");
+ nx();
+ aw=1; e_expr();
+ print_str("L"); print_int(t1+1); print_str(":\n");
+ tbd=tbs;
+}
+else if(tk==T_COLON){ if(tn>0){ break; } else { se(); } }
+else if(tk==T_COMMA){ if(aw==1){ se(); }
+ while(opn>0){ if(oq[opn-1]==T_LPAREN){ break; } opn=opn-1; em_pop(oq[opn]); }
+ if(ar>0){ if(opn==0){ break; } if(oq[opn-1]!=T_LPAREN){ break; } }
+ print_str("    popl %eax\n");
+ aw=1; nx(); }
+else if(tk==T_SIZEOF){ if(aw==0){ se(); } nx(); if(tk!=T_LPAREN){ se(); } nx();
+ sz=4;
+ if(tk==T_CHAR){ sz=1; nx(); }
+ else if(tk==T_INT){ sz=4; nx(); }
+ else if(tk==T_ID){ s=fi(); if(s==-1){ g=gfd(); if(g<0){ se(); }
+   if(gn[g]>0){ if(gst[g]==1){ sz=gn[g]; } else { sz=gn[g]*4; } }
+   else { if(gst[g]==1){ sz=1; } } }
+  else { if(so_p[s]>0){ sz=4; } }
+  nx(); }
+ else { se(); }
+ if(tk!=T_RPAREN){ se(); }
+ nx();
+ print_str("    pushl $"); print_int(sz); print_str("\n");
+ aw=0;
+}
 else { break; } }
 if(aw==1){ se(); }
-while(opn>0){ if(oq[opn-1]==T_LPAREN){ se(); } opn=opn-1; em_pop(oq[opn]); } }
+while(opn>0){ if(oq[opn-1]==T_LPAREN){ if(tbd>0){ break; } se(); } opn=opn-1; em_pop(oq[opn]); } }
 void p_cmp(){
 e_expr();
 }
@@ -394,9 +500,13 @@ if(tk==T_ID){
 } else {
  p_cmp();
 } }
-void pd(){ int j; int i;
+void pd(int bt){ int j; int i; int k;
 nx();
 while(1){
+ if(tk==T_CONST){ nx(); }
+ if(tk==T_VOLATILE){ nx(); }
+ k=0;
+ while(tk==T_STAR){ k=k+1; nx(); }
  if(tk!=T_ID){ se(); }
  i=sc-1;
  while(i>=bstk[bd]){
@@ -407,8 +517,8 @@ while(1){
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
  sn[sc*16+tl]=0;
  so[sc]=0-((locn+1)*4);
- so_t[sc]=0;
- so_p[sc]=0;
+ so_t[sc]=bt;
+ so_p[sc]=k;
  locn=locn+1;
  sc=sc+1;
  print_str("    subl $4, %esp\n");
@@ -420,10 +530,13 @@ nx();
 if(tk==T_SEMI){ print_str("    jmp .Lr"); print_int(la); print_str("\n"); }
 else { aw=1; opn=0; p_cmp(); print_str("    popl %eax\n    jmp .Lr"); print_int(la); print_str("\n"); }
 }
-void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp; int btl; int ns;
+void p_s(){ int t1; int t2; int d; int ip; int incf; int bpos; int btk; int btp; int btl; int ns; int sp; int stp; int stl; int k;
 aw=1; opn=0;
-if(tk==T_INT){ ns=0; pd(); }
-else if(tk==T_CHAR){ ns=0; pd(); }
+if(tk==T_CONST){ nx(); }
+if(tk==T_VOLATILE){ nx(); }
+if(tk==T_INT){ ns=0; pd(0); }
+else if(tk==T_CHAR){ ns=0; pd(1); }
+else if(tk==T_ID){ if(tdfind()!=-1){ ns=0; pd(tdb[tdfind()]); } else { ns=0; p_a(); } }
 else if(tk==T_RETURN){ ns=0; p_k(); }
 else if(tk==T_LBRACE){ ns=1;
  bd=bd+1; if(bd>=16){ se(); }
@@ -458,6 +571,74 @@ else if(tk==T_WHILE){ ns=1; nx();
  em_jmp(t1);
  ld=ld-1;
  em_lbl(t1+1); }
+else if(tk==T_SWITCH){ ns=1;
+ nx(); if(tk!=T_LPAREN){ se(); } nx();
+ cr=cr+1; aw=1; opn=0; p_cmp(); cr=cr-1;
+ if(tk!=T_RPAREN){ se(); }
+ nx();
+ swt[swd]=0-((locn+1)*4);
+locn=locn+1;
+print_str("    popl %eax\n    subl $4, %esp\n    movl %eax, "); print_int(swt[swd]); print_str("(%ebp)\n");
+ t1=lc; lc=lc+1;
+ if(tk!=T_LBRACE){ se(); }
+ sp=pos;
+ nx();
+ /* 预扫描 1 遍：收集 case 常量与 default，分配各 case 标号 */
+ swc[swd]=0; swhas[swd]=0; swci[swd]=0;
+ stp=tp; stl=tl; d=1;
+ while(1){
+  if(tk==T_LBRACE){ d=d+1; }
+  if(tk==T_RBRACE){ d=d-1; if(d==0){ break; } }
+  if(d==1){
+   if(tk==T_CASE){ nx();
+    if(tk==T_NUM){ swcv[swd*32+swc[swd]]=tv; swlb[swd*32+swc[swd]]=lc; lc=lc+1; swc[swd]=swc[swd]+1; nx(); }
+    else if(tk==T_CHR){ swcv[swd*32+swc[swd]]=tv; swlb[swd*32+swc[swd]]=lc; lc=lc+1; swc[swd]=swc[swd]+1; nx(); }
+    else if(tk==T_ID){ if(cstfind()<0){ se(); } swcv[swd*32+swc[swd]]=csv[cstfind()]; swlb[swd*32+swc[swd]]=lc; lc=lc+1; swc[swd]=swc[swd]+1; nx(); }
+    else { se(); }
+   }
+   else if(tk==T_DEFAULT){ swdef[swd]=lc; lc=lc+1; swhas[swd]=1; }
+  }
+  nx();
+ }
+ /* 发比较链（先于所有 case 体；未命中→default 或 end） */
+ k=0;
+ while(k<swc[swd]){
+  print_str("    movl "); print_int(swt[swd]); print_str("(%ebp), %eax\n    cmpl $"); print_int(swcv[swd*32+k]); print_str(", %eax\n    je L"); print_int(swlb[swd*32+k]); print_str("\n");
+  k=k+1; }
+ if(swhas[swd]==1){ print_str("    jmp L"); print_int(swdef[swd]); print_str("\n"); }
+ else { print_str("    jmp L"); print_int(t1); print_str("\n"); }
+ /* 恢复 body 流并解析（case 体按扫描序打标号；fallthrough 自然落入下一 case 体） */
+ pos=sp; nx();
+ if(swd>=16){ se(); } swd=swd+1;
+ if(ld>=16){ se(); } lcs[ld]=t1; lbl[ld]=t1; ld=ld+1;
+ bd=bd+1; if(bd>=16){ se(); } bstk[bd]=sc; blok[bd]=locn;
+ while(tk!=T_RBRACE){ p_s(); }
+ if(tk!=T_RBRACE){ se(); }
+ if(sc>bstk[bd]){ print_str("    addl $"); print_int((sc-bstk[bd])*4); print_str(", %esp\n"); }
+ sc=bstk[bd]; locn=blok[bd]; bd=bd-1;
+ ld=ld-1; swd=swd-1; locn=locn-1;
+ em_lbl(t1);
+ print_str("    addl $4, %esp\n");
+ nx(); }
+else if(tk==T_CASE){ ns=1;
+ if(swd<=0){ se(); }
+ nx();
+ if(tk!=T_NUM){ if(tk!=T_CHR){ if(tk!=T_ID){ se(); } } }
+ if(tk==T_ID){ if(cstfind()<0){ se(); } d=csv[cstfind()]; }
+ else { d=tv; }
+ nx();
+ if(tk!=T_COLON){ se(); }
+ nx();
+ em_lbl(swlb[(swd-1)*32+swci[swd-1]]);
+ swci[swd-1]=swci[swd-1]+1;
+ p_s();
+}
+else if(tk==T_DEFAULT){ ns=1;
+ if(swd<=0){ se(); }
+ nx(); if(tk!=T_COLON){ se(); } nx();
+ em_lbl(swdef[swd-1]);
+ p_s();
+}
 else if(tk==T_FOR){ ns=1;
  t1=lc; lc=lc+3;
  if(ld>=16){ se(); }
@@ -547,9 +728,14 @@ nx();
 p=0;
 while(tk!=T_RPAREN){
  pb=0; pp=0;
+ if(tk==T_CONST){ nx(); }
+ if(tk==T_VOLATILE){ nx(); }
  if(tk==T_INT){ pb=0; nx(); }
  if(tk==T_CHAR){ pb=1; nx(); }
- if(tk==T_STAR){ pp=1; nx(); }
+ if(tk==T_ID){ if(tdfind()!=-1){ pb=tdb[tdfind()]; nx(); } }
+ if(tk==T_CONST){ nx(); }
+ if(tk==T_VOLATILE){ nx(); }
+ while(tk==T_STAR){ pp=pp+1; nx(); }
  if(tk!=T_ID){ se(); }
  j=0; while(j<tl){ sn[sc*16+j]=nm[j]; j=j+1; }
  sn[sc*16+tl]=0;
@@ -585,18 +771,20 @@ void pgv(){ int j; int an; int v;
 if(tk!=T_ID){ se(); }
 if(fnfind()!=-1){ se(); }
 if(gfd()!=-1){ se(); }
-if(gsz>=128){ se(); }
+if(gsz>=256){ se(); }
 j=0; while(j<tl){ gan[gsz*16+j]=nm[j]; j=j+1; }
 gan[gsz*16+tl]=0;
 if(tl==7 && nm[0]=='s' && nm[1]=='r' && nm[2]=='c' && nm[3]=='_' && nm[4]=='b' && nm[5]=='u' && nm[6]=='f'){ gsb=gsz; }
 if(tl==7 && nm[0]=='s' && nm[1]=='r' && nm[2]=='c' && nm[3]=='_' && nm[4]=='l' && nm[5]=='e' && nm[6]=='n'){ gsl=gsz; }
 if(tl==8 && nm[0]=='p' && nm[1]=='g' && nm[2]=='_' && nm[3]=='q' && nm[4]=='u' && nm[5]=='i' && nm[6]=='e' && nm[7]=='t'){ gpq=gsz; }
 gst[gsz]=g_ty; gn[gsz]=0;
+gptr[gsz]=pdlv;
 nx();
 if(tk==T_LBKT){
  nx(); if(tk!=T_NUM){ se(); } an=tv; if(an<=0){ se(); } nx();
  if(tk!=T_RBKT){ se(); } nx();
- pgvk(gsz,an,g_ty);
+ if(gptr[gsz]>0){ gst[gsz]=0; }
+ pgvk(gsz,an,gst[gsz]);
  gsz=gsz+1;
  return;
 }
@@ -631,8 +819,50 @@ print_str(".section .rodata\n");
 sxi=0;
 while(sxi<stc){ sbro(sxi); sxi=sxi+1; }
 }
-void ptop_one(){ int sp; int stp; int stl;
- if(tk==T_INT){ g_ty=0; nx(); } else if(tk==T_CHAR){ g_ty=1; nx(); } else if(tk==T_VOID){ g_ty=2; nx(); } else { se(); }
+void ptop_one(){ int sp; int stp; int stl; int j;
+ if(tk==T_CONST){ nx(); }
+ if(tk==T_VOLATILE){ nx(); }
+ if(tk==T_ENUM){ nx();
+  if(tk==T_ID){ nx(); }
+  if(tk==T_LBRACE){
+   nx(); ev=0;
+   while(1){
+    if(tk!=T_ID){ se(); }
+    if(cstc>=32){ se(); }
+    j=0; while(j<tl){ csn[cstc*16+j]=nm[j]; j=j+1; }
+    csn[cstc*16+tl]=0;
+    csv[cstc]=ev;
+    cstc=cstc+1;
+    nx();
+    if(tk==T_ASSIGN){ nx(); if(tk!=T_NUM){ se(); } csv[cstc-1]=tv; ev=tv; nx(); }
+    ev=ev+1;
+    if(tk==T_COMMA){ nx(); } else { break; }
+   }
+   if(tk!=T_RBRACE){ se(); } nx();
+  }
+  if(tk!=T_SEMI){ se(); }
+  nx();
+  return;
+ }
+ if(tk==T_TYPEDEF){ nx();
+  if(tdc>=16){ se(); }
+  if(tk==T_INT){ tdb[tdc]=0; nx(); } else if(tk==T_CHAR){ tdb[tdc]=1; nx(); } else { se(); }
+  if(tk==T_STAR){ tdp[tdc]=1; nx(); }
+  if(tk!=T_ID){ se(); }
+  j=0; while(j<tl){ tdn[tdc*16+j]=nm[j]; j=j+1; }
+  tdn[tdc*16+tl]=0;
+  tdc=tdc+1;
+  nx();
+  if(tk!=T_SEMI){ se(); }
+  nx();
+  return;
+ }
+ if(tk==T_ID){ j=tdfind(); if(j>=0){ g_ty=tdb[j]; nx(); } }
+ if(tk==T_INT){ g_ty=0; nx(); } else if(tk==T_CHAR){ g_ty=1; nx(); } else if(tk==T_VOID){ g_ty=2; nx(); } else if(tk!=T_ID){ se(); }
+ if(tk==T_CONST){ nx(); }
+ if(tk==T_VOLATILE){ nx(); }
+ pdlv=0;
+ while(tk==T_STAR){ pdlv=pdlv+1; nx(); }
  if(tk!=T_ID){ se(); }
  sp=pos; stp=tp; stl=tl;
  nx();

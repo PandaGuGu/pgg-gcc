@@ -112,7 +112,7 @@ matrix "int main(){ /* 注释 */ int a; a=3; return a; }" 3
 matrix_err "int f(){ return 1; }" 2
 matrix_err "int main(){ break; return 0; }" 2
 matrix_err "int main(){ int i; i=0; do { i=i+1; } while(0) }" 2
-matrix_err "int main(){ return 2%3; }" 1
+matrix_err "int main(){ return 2@3; }" 1
 
 echo ""
 echo "== B4-5 门5：pg_quiet=1 目标 stdout 必须 0 字节（v4.1 语义回归；B4 整改项） =="
