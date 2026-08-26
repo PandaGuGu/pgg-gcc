@@ -156,6 +156,18 @@ run_case "int main(){ return !0 + !7; }" 1
 run_case "void f(){ print_str(\"z\"); } int main(){ f(); return 4; }" "z4"
 run_case "int main(){ /* 注释 */ int a; a=3; return a; }" 3
 
+echo "== B5 面扩张：char*/int* 形参（链上扩张演示轮；期望值手算） =="
+run_case "int sl(char *s){ int n; n=0; while(s[n]!=0){ n=n+1; } return n; } int main(){ print_int(sl(\"hello\")); return 0; }" 50
+run_case "char b[4]; int sl(char *s){ int n; n=0; while(s[n]!=0){ n=n+1; } return n; } int main(){ b[0]='x'; b[1]='y'; b[2]=0; print_int(sl(b)); return 0; }" 20
+run_case "char b[4]; int sl(char *s){ int n; n=0; while(s[n]!=0){ n=n+1; } return n; } int main(){ b[0]='x'; b[1]='y'; b[2]='z'; b[3]=0; return sl(b)*10+sl(\"ok\"); }" 32
+run_case "int sum2(int *p, int n){ int i; int s; s=0; i=0; while(i<n){ s=s+p[i]; i=i+1; } return s; } int ga[3]; int main(){ ga[0]=1; ga[1]=2; ga[2]=3; return sum2(ga,3); }" 6
+run_case "int cv(char *a, char *b){ return a[0]+b[0]; } int main(){ return cv(\"AB\",\"yz\"); }" 186
+run_case "void sh(char *s){ print_str(s); } int main(){ sh(\"hi\"); return 1; }" hi1
+run_case "int b[3]; void seta(int *p, int i, int v){ p[i]=v; } int main(){ int s; seta(b,1,7); s=b[1]; return s; }" 7
+run_case "char c[3]; void setc(char *p, int v){ p[0]=v; } int main(){ setc(c,65); return c[0]; }" 65
+run_case "char g[4]; void put(char *s, int i){ g[i]=s[0]; } int main(){ put(\"Z\",2); return g[2]; }" 90
+run_case "int f(char *s){ return s[0]; } int main(){ return f(\"a\")+f(\"b\"); }" 195
+
 echo "== v2 错误用例（缺 main/未定义/重定义/语法） =="
 run_err "int f(){ return 1; }" 2
 run_err "int main(){ return g(1); }" 2
