@@ -228,6 +228,51 @@ bin0（x86）直接产出目标 ISA 汇编，用目标平台的 binutils 汇编/
 > 门4 三头行为矩阵 5/5**。AMD64 自举闭台达成；i386 链零变化（五线全绿）。下一步 P4：ARM64
 > 后端（跨 binutils + qemu 已放行）。
 
+### 5.4 P4 实施规范（ARM64 后端 —— 16B 值栈世界、AArch64 ABI 子集、qemu 闭台）
+
+> **定位**：P4 在 i386/AMD64 双目标不动的前提下新增 **AArch64（ARM64）代码生成**。世界观与
+> x86 完全不同：无标志位隐式栈机、立即数受限（12 位）、`[x29,#-imm]` 无负偏移、bl 不压栈。
+> 选型约束：**值栈统一 16B 槽**（sub sp,#16 / str x0,[sp] 成对）；栈帧 x29 基址、局部槽为
+> 负偏移仅能寄存器计算地址；全局布局与 AMD64 完全一致（int 8B / struct 内部 4B，数据段
+> 句柄唯一差异是 `.quad` 分支已覆盖）；运行时不引 libc——AArch64 Linux 纯 syscall
+> （号 read=63 / write=64 / exit=93，参数 x0–x5、号放 x8）。
+>
+> **P4-a 最小可行冒烟（目标：qemu 内原生运行验证渲染通路）**：
+> 1. **目标标记**：boot0 增全局 `int g_ar;`（0=其他 / 1=arm64），沿用 P3 的 sed 常量折叠变体
+>    （`g_ar==1`→`1==1`、`g_ar==0`→`0==1`）构建 bin_arm；irgo 主分发按 g_ar 选 irgo_arm()。
+> 2. **操作码渲染 ARM64 化**：irgo_arm 九操作码——PUSHI/PUSHL/STORE 用 mov+sub sp+str，
+>    BINOP 逐 token 翻译（add/sub/mul/sdiv/msub(rem)/lsl/asr/and/orr/eor/neg/cset/mvn/ldr
+>    解引用/逻辑 cset），CMP 用 cmp+cset（eq/ne/lt/le/gt/ge），JZ/JNZ 用 cmp+b.eq/b.ne，
+>    跳转/标签 b/L。**局部槽负偏移**必须寄存器寻址（`sub x1,x29,#-off`），不能 `[x29,#-imm]`。
+> 3. **调用/栈帧**：调用序 `ldr x0,[sp]`＋`bl fN`＋`add sp,sp,#n*16`＋结果回压；参数槽
+>    `16+p*16`（stp 压 16B 后原 arg0 在 x29+16）；局部槽 `0-(locn*16)`、`sub sp,sp,#16*N`；
+>    pfun 序言 `stp x29,x30,[sp,#-16]!`＋`mov x29,sp`＋`sub sp,sp,#16`，尾声 `mov sp,x29;
+>    ldp x29,x30,[sp],#16; ret`；p_k 返回 x0。
+> 4. **最小透传**：字符串字面量 `adrp+add :lo12:strN`（.rodata 远于 ±1MB 用 adrp 不破）；
+>    局部标量读写（add/sub 基址+ldr/str/strb）。其余透传句柄登记"留 P4-b"。
+> 5. **运行时模板（eh() g_ar 分支）**：_start（含 gsl/gsb stdin 预载 read 63）→ bl fN →
+>    print_decimal＋print_char(10)（pg_quiet 门同 amd64）→ exit 93；print_decimal/print_char/
+>    print_str/print_err/print_int/exit 全部 AArch64 纯 syscall 实现（x19/x20 保值，scrtch 栈
+>    .bss runt_buf 16B）。
+> 6. **验收门**：bin_arm < 冒烟 → arm64.s → `aarch64-linux-gnu-as/ld`（静态，无 libc）→
+>    `qemu-aarch64` 原生运行（return 42、递归 fact、print_int/print_str、局部）；i386/AMD64
+>    五线全绿零变化。
+>
+> **P4-b 全面化（同 P2-b 模式）**：e_expr/p_a/pd/p_s 全部透传句柄 ARM64 化——局部/全局
+> 1D/2D/3D 数组读写（局部跨步 16B / 全局 8B）、struct/union 成员链、`->` 链、& 取址、ecpy
+> 整值拷贝、逗号/三目/switch 链、sizeof、块回收（`add sp,sp,#n*16`）、表达式语句清栈、
+> 初始化器（局部/全局 .quad/.byte/.space）、数据段布局（对齐 AMD64）。tests/run_arm.sh 由
+> run_amd.sh 42 例平移（bin_arm + aarch64 交叉 as/ld + qemu）。
+>
+> **P4-c ARM64 双目标闭台（同 P3 模式）**：bin_arm 自编 boot0_arm.pgc → selfarm.s（ARM64
+> 源码态）→`aarch64-linux-gnu-as/ld`→bin1_arm（ARM64 原生静态）→ qemu 下 bin1_arm 自编 →
+> selfarm2.s → bin2_arm；**门1 selfarm.s==selfarm2.s 逐字节、门2 二进制可复现、门4 三头行为
+> 矩阵 5/5**（三头均在 qemu-aarch64 下原生运行）。i386/AMD64 五线零变化。
+>
+> > **风险**：AArch64 立即数 12 位——局部帧 >4095B 需 movz 两段（登记局限，冒烟/闭台用例
+> > 帧均 <4KB）；adrp 页跨边界（as 的 :lo12: 重定位处理）；qemu 语义偏差（登记已知偏差，
+> > 不作行为对照依据）；bin_arm 自编译 boot0_arm 时 IR 缓冲/数据段尺寸增长（沿用 E 系列登记）。
+
 ## 6. 决策记录（Q1–Q5，2026-08-26 用户拍板）
 
 - **Q1 路线**：✅ **路线 A（多后端 + 交叉自举）**——保持无蛋红线，新增第二代码生成后端。
