@@ -20,6 +20,8 @@
 > 新路径须用 fi_i——fi 返回槽偏移非索引）→ run_boot **100/100**、闭台不破。逐日留痕见
 > [docs/logs/2026-08-25.md](docs/logs/2026-08-25.md) 会话 13–19 续；ORIGIN B2a–B2f、v4.1+boot0 行已登记。
 > 方案 §6 步序编号与实际会话序号错位（见 §6 注），B2g 为方案 B2e/B2f 合并实施。
+>
+> **P4-II 链上增量（同日续）**：T1–T7＋剩余限制（const/volatile、指针声明符、三目、逗号、sizeof、位运算+%、switch、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号）已全部入链——run_boot **212/212**、闭台固定点不破，详见 docs/logs/2026-08-26.md 会话 4–6 与 ORIGIN P4-II 行。
 
 ## 0. 一句话
 
@@ -150,7 +152,7 @@ switch、struct、enum、typedef、位运算、三目、逗号、sizeof、多维
   **24/24**）＋ run.sh（pggcc4 链 72/72）与 run_boot.sh（bin0 链 90/90）双侧验证覆盖，另门5
   pg_quiet 语义三头 0 字节 **3/3**。门脚本 `tests/boot_b4.sh` 入库。
 - **B5**：✅ **已启用（2026-08-26，用户放行）**——日常开发切到自举链：开发对象＝`src/boot0.pgc`
-  （pggcc 语言），构建/回归门＝`run_boot.sh`（90）＋定期 `boot_b4.sh` 闭台复验；pggcc4 系手工 stage
+  （pggcc 语言），构建/回归门＝`run_boot.sh`（**212**）＋定期 `boot_b4.sh` 闭台复验；pggcc4 系手工 stage
   冻结为跨链参照（退役时点执行中商定）。操作约定见 §8.1。
 - **红线全程不变**：无任何 C/C++ 编译器对照、无源码阅读；对照开关仍由用户按阶段显式开启。
 
@@ -159,8 +161,8 @@ switch、struct、enum、typedef、位运算、三目、逗号、sizeof、多维
 - **改代码**＝改 `src/boot0.pgc`（pggcc v4 语言）＋按需 `tests/run_boot.sh` 用例集；**不再改手工汇编
   stage**（`pggcc0–4.s` 冻结为跨链参照，仅 B4 复核/退役审计时使用）。
 - **构建链**：`bin1 < src/boot0.pgc > boot0c.s` → `as --32` → `ld -m elf_i386` → 新 bin；
-  一键重建走 `tests/run_boot.sh`（内部以 pggcc4 重建 bin0 并跑 90/90）。
-- **回归门**：每轮开发 `bash tests/run_boot.sh`（自举链 90/90）；boot0 面每扩张一轮后
+  一键重建走 `tests/run_boot.sh`（内部以 pggcc4 重建 bin0 并跑 212/212）。
+- **回归门**：每轮开发 `bash tests/run_boot.sh`（自举链 212/212）；boot0 面每扩张一轮后
   `bash tests/boot_b4.sh`（闭台固定点复验：boot0b.s==boot0c.s、bin1==bin2）。
 - **面扩张原则**：链上只能当轮使用 boot0 已实现的面；新面（如 `char*` 形参——B2 明确未用、
   或缺位算子 `%` 等）先在 boot0.pgc 自身引入并自证后启用（闭合由构造保证，同 D1）。
