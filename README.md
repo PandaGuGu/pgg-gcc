@@ -38,6 +38,8 @@
 > **2026-08-26 平台移植决策定稿**：路线 A（多后端＋交叉自举）、D1b 轻量 IR、Q1–Q5 用户拍板；
 > C99 特性面 P5 前先完成移植里程碑 P0–P4（决策→IR 重构→AMD64→双目标闭台→ARM64）。
 > 详见 [docs/design/platform-portability.md](docs/design/platform-portability.md)。此后每个阶段完成即上传 GitHub。
+>
+> **2026-08-27 B5 链上缺陷修复**：外部评测矩阵驱动根治四缺陷——①for 语句"扫描+回放"增量解析污染 `nm[]`（语句后按名查找失配）；②下标索引表达式操作符覆盖外层待定操作符（`a[j]>a[j+1]` 被编译为 `a[j]+a[j+1]`，冒泡 if 恒真）；③struct 类型名登记截断（多字母结构名全挂，1 字母名恰巧合掩盖）；④struct 自引用指针成员（`struct node *next`）＋成员读作 RHS（`x=s.m`/`p=p->next`）。冒泡排序与 `struct` 自引用链表三目标（i386/AMD64/ARM64）行为全部正确；run_boot 232→**237/237** 全绿，boot_b4/boot_amd/boot_arm 三闭台固定点不破；详见 [docs/logs/2026-08-27.md](docs/logs/2026-08-27.md)。
 
 - 许可证：MIT
 - 语言：目标 C（编译器本体以无蛋方式从 i386 汇编层起步，见基线 §6；当前已可用 pggcc 语言自举，见 architecture-b2）
@@ -55,7 +57,7 @@
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
 | [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
-| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **232/232** |
+| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **237/237** |
 | [tests/boot_b4.sh](tests/boot_b4.sh) | **B4 煮蛋闭台门**：bin0→bin1→bin2 逐字节固定点 ＋ 三头行为矩阵 ＋ pg_quiet 语义回归；**已全门通过（2026-08-26）** |
 
 ## 路线图
@@ -66,7 +68,7 @@
 | v1（P1） | ✅ v1 完成（10/10 自证通过） | 变量声明与赋值（stdin 程序文本；`int` 声明、`=` 链式赋值、符号表、栈帧局部变量、末语句值打印；细则见 plan §4.1） |
 | v2（P2） | ✅ v2 完成（11/11 自证通过） | 函数定义与调用（`int` 函数/参数表/`return`；cdecl 实参从右到左压栈；`main` 入口打印返回值；函数级作用域；细则见 plan §4.2） |
 | v3（P3） | ✅ v3 完成（15/15 自证通过） | 控制流：if/while/for、比较、块作用域（递归自证 fact(5)==120 → 语言图灵完备，B0 硬门槛达成；细则见 plan §4.3） |
-| v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过）；**P4-II T1–T7＋收口已在自举链落地，C90 全量达成（run_boot 232/232）**（2026-08-26） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**）；**二期**（C90 全量，链上推进）已含：const/volatile、指针声明符、三目 ?:、逗号、sizeof、位运算+%、switch/case/default、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号、局部初始化器、struct 多重指针 `->` 链 |
+| v4（P4 一期） | ✅ v4/v4.1 完成（72/72 自证通过）；**P4-II T1–T7＋收口已在自举链落地，C90 全量达成（run_boot 237/237）**（2026-08-27 外部评测矩阵驱动四缺陷修复后） | 类型系统补全——一期 = **编译器核心子集 B1（生蛋原料）**：char/指针/数组/字符串/逻辑运算/do-while·break·continue/复合赋值/全局变量/强转/注释，及 v4.1 内建 `exit`/`print_int`/`print_err` + stdin 预读 `src_buf` + `pg_quiet` 开关（细则见 plan §4.4；**B1 达成**）；**二期**（C90 全量，链上推进）已含：const/volatile、指针声明符、三目 ?:、逗号、sizeof、位运算+%、switch/case/default、enum、typedef、struct/union、一/二/三维数组、`->`、匿名嵌套 struct、struct 数组·参数·初始化、`&a[i]`/`&s.m`、声明符括号、局部初始化器、struct 多重指针 `->` 链、**struct 自引用指针**；**B5-2 修复**：for 后 tokenizer 失步、下标索引操作符覆盖、多字母结构名登记、成员读作 RHS（2026-08-27，详见 [docs/logs/2026-08-27.md](docs/logs/2026-08-27.md)） |
 | B2（自举支线） | ✅ B2a–g 完成，**自举成功**（232/232）；**B4 闭台通过、B5 已启用**（2026-08-26） | 用 pggcc 语言重写编译器本体 `src/boot0.pgc`：骨架/变量/函数/控制流/块作用域/循环控制/自面补全七步推进 → `bin0`（pggcc4 编译）**编译 boot0.pgc 自身成功**→ **B3 达成**；**B4 煮蛋闭台通过**（bin0→bin1→bin2 逐字节固定点，tests/boot_b4.sh）；**B5 日常开发已切到自举链**（改 boot0.pgc → bin1 编 → run_boot 232 门；pggcc4 冻结为跨链参照；操作约定见 architecture-b2 §8.1） |
 | 移植 P1 | ✅ **P1 完成**（2026-08-26，链上） | 轻量 IR v0.1（D1b 决策，platform-portability §5.1）：boot0 发码改走 ostr/oint → IR 缓冲 → irgo 统一渲染；**P1-b** em_* 全族语义化为操作码+参数（OP_PUSHI/PUSHL/STORE/BINOP/CMP/JZ/JNZ/JMP/LBL），irgo 按操作码分发（AMD64 渲染器选择点就位）；**run_boot 232/232、boot_b4 闭台全门 PASS、run.sh 72/72** |
 | 移植 P2 | ✅ **P2 完成**（2026-08-26，链上） | AMD64 后端（platform §5.2）：g_am 双目标；操作码 64 位化 + eh() 运行时模板 syscall 化 + 调用/栈帧 64 位 + 全局/数组/指针/struct/union/switch/初始化器全 64 位化（int 8B/struct 4B 布局规则）；**tests/run_amd.sh 42/42** 原生运行；x86 链零变化 |
@@ -107,7 +109,7 @@ ld -m elf_i386 -o build/bin0 build/bin0.o               # bin0 = B0 编译器
 
 ```bash
 bash tests/run.sh        # 主链：v0–v4.1 全部用例，72/72
-bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，232/232
+bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，237/237
 ```
 
 ## 贡献者

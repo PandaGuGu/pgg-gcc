@@ -357,6 +357,15 @@ run_case "struct N { int v; }; struct M { struct N *n; }; int main(){ struct N a
 run_case "struct N { int w; int v; }; struct M { struct N *n; int pad; }; int main(){ struct N a; struct M m; a.w=3; a.v=4; m.pad=0; m.n=&a; return m.n->w*10+m.n->v; }" 34
 run_case "struct N { int v; }; struct M { struct N *n; }; struct N g1; struct M g2; int main(){ g1.v=5; g2.n=&g1; return g2.n->v; }" 5
 
+echo "== B5 回归（2026-08-26 修复）：经典冒泡排序（嵌套 for + 变址比较 + swap） =="
+run_case "int main(){ int a[5]; int i; int j; int t; int n; a[0]=5; a[1]=3; a[2]=4; a[3]=1; a[4]=2; n=5; for(i=0;i<n-1;i=i+1){ for(j=0;j<n-1-i;j=j+1){ if(a[j]>a[j+1]){ t=a[j]; a[j]=a[j+1]; a[j+1]=t; } } } return a[0]*10000+a[1]*1000+a[2]*100+a[3]*10+a[4]; }" 12345
+run_case "int main(){ int a[4]; int i; int j; int t; int n; a[0]=4; a[1]=3; a[2]=2; a[3]=1; n=4; for(i=0;i<n-1;i=i+1){ for(j=0;j<n-1-i;j=j+1){ if(a[j]>a[j+1]){ t=a[j]; a[j]=a[j+1]; a[j+1]=t; } } } return a[0]*1000+a[1]*100+a[2]*10+a[3]; }" 1234
+
+echo "== B5 回归：struct 自引用链表（自引用指针成员 + 多字母类型名 + 指针成员读 RHS） =="
+run_case "struct node { int v; struct node *next; }; int main(){ struct node a; struct node b; struct node *p; int c; a.v=1; b.v=2; a.next=&b; b.next=0; c=0; p=&a; while(p!=0){ c=c+p->v; p=p->next; } return c; }" 3
+run_case "struct node { int v; struct node *next; }; struct node g; int main(){ struct node a; struct node b; struct node c; int s; g.v=4; a.v=1; b.v=2; c.v=3; a.next=&b; b.next=&c; c.next=&g; g.next=0; s=0; struct node *p; p=&a; while(p!=0){ s=s+p->v; p=p->next; } return s; }" 10
+run_case "struct ab { int x; }; int main(){ struct ab s; int v; s.x=5; v=s.x; return v*2; }" 10
+
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"
 [ "$FAIL" -eq 0 ]

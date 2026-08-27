@@ -148,6 +148,31 @@
    qemu-aarch64 下 bin1_arm 自编→selfarm2.s→bin2_arm；**门1 selfarm.s==selfarm2.s 逐字节
    （源码态固定点）、门2 二进制可复现（唯一 .o 重链）、门4 三头行为矩阵 5/5（全 qemu 原生）**。
    ARM64 自举闭台达成；i386/AMD64 五线零变化（六线全绿）。 */
+/* B5-2 缺陷修复 (2026-08-27, chain, 外部评测矩阵驱动)：
+   ① for 语句"扫描+回放"增量二次解析污染全局 nm[]（回放 pos=ip;nx();p_a() 后仅恢复
+    pos/tk/tp/tl）→ 语句后一切按名查找（bfind/fnfind/fi/tdfind）作用于循环变量名：
+    紧邻调用语句 bfind 失败报错、赋值 es_ 写入错误槽。修复：nm_sv[17] 快照/还原（p_s
+    T_FOR body 后记取、增量回放后还原）。
+   ② 下标索引表达式位运算符覆盖外层待定运算符：e_expr/p_a 全部 27 处 q=opn;opn=0;
+    只隔离栈针，嵌套 e_expr 的操作符仍从 oq[0] 起写——外层待定 op（如 a[j]>a[j+1] 的
+    '>'，在 oq[0]）被索引 j+1 的 '+' 覆盖并最终按 '+' 抽干（编译为 a[j]+a[j+1]，if 恒真；
+    双侧下标必然触发，单侧/常量索引不触发）。修复：改压哨兵 oq[opn]=T_LPAREN;opn++;
+    tbs=tbd;tbd=opn;（索引操作符写在哨兵之上，e_expr 所有 pop/drain 在 LPAREN 处停住），
+    解析后 opn=q;tbd=tbs;（复用既有 tbd 三目边界机制，零新增全局；曾试槽位搬移方案
+    osv/ors 自编译失败已回退）。
+   ③ struct 类型名登记截断（历史潜伏）：ptop_one 登记重扫 pos=sp;nx(); 的 sp 存的是名字
+    token 的 END（pos）而非起点 tp，重扫吐出 '{(tl 被标点置 1)，stnm 只写首字母——1 字母
+    名（struct N/P/M）恰巧合掩盖，多字母名 stfind 全失配（局部/全局/成员/参数/数组皆挂）。
+    修复：登记改 stl=tl 快照、while(q<stl){stnm[j*16+q]=nm[q]}（'{' 标点不冲 nm，无需重扫）。
+   ④ struct 自引用指针成员：pstm 成员 struct node *next 的类型尚在定义中未登记 →
+    stfind 失败即报错。修复：未登记且与正在定义结构同名 → nsid=j（C90 自引用指针指向
+    未完成类型合法）；值成员 nsid==j 特判报错（无限大小类型非法）。
+   ⑤ 成员读作 RHS（链表必需）：p_a T_DOT/T_ARROW 成员分支只支持写（链后强制
+     tk!=T_ASSIGN{se()}），x=s.m / p=p->next 全挂（既有用例靠 return 走 e_expr 或写路径
+     掩盖）。修复：!=T_ASSIGN 时镜像写路径发装载并 return（x86 movl/movzbl off(%edx)%eax
+     pushl，amd64/arm64 同步）。
+   回归：run_boot 232→237（冒泡×2、自引用链表×2、多字母名+成员读 RHS）、boot_b4/boot_amd/
+   boot_arm 三闭台全门 PASS（固定点不破）、run.sh 72、run_amd 42、run_arm 42。 */
 int pg_quiet=1;
 char src_buf[262144];
 int src_len;
@@ -167,6 +192,7 @@ int so_t[32];
 int so_p[32];
 int sc;
 char nm[17];
+char nm_sv[17];
 int lstv;
 char fns[1024];
 int fnp[64];
@@ -604,11 +630,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
  if(s!=-1){ if(so_p[s]==1){ d=1; } }
  if(s!=-1 && so_sz[s]>0 && so_st[s]>0){
   /* struct 数组元素访问（支持 .m 链） */
-  q=opn; opn=0;
+  q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
   nx(); nx(); aw=1; e_expr();
   if(tk!=T_RBKT){ se(); }
   nx();
-  opn=q;
+  opn=q; tbd=tbs;
   if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_st[s]-1]); ostr("\n    mul x1, x1, x2\n");
    if(so[s]<0){ ostr("    sub x0, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x0, x29, #"); oint(so[s]); ostr("\n"); }
    ostr("    add x0, x0, x1\n"); }
@@ -641,13 +667,13 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
  } else if(s!=-1 && so_pst[s]>0 && so_p[s]==1){
    /* struct 指针下标 p[i]（可接 .m 链）：索引按 stsz 缩放，基址=指针值 */
-   q=opn; opn=0;
+   q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx();
    em_ld(so[s]);
    aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_pst[s]-1]); ostr("\n    mul x1, x1, x2\n    add x0, x0, x1\n"); }
    else if(g_am==1){ ostr("    popq %rcx\n    popq %rax\n");
     ostr("    imulq $"); oint(stsz[so_pst[s]-1]); ostr(", %rcx\n    addq %rcx, %rax\n"); }
@@ -674,13 +700,13 @@ else if(tk==T_ID){ if(aw==0){ se(); }
     else { if(g_ar==1){ ostr("    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n    pushq %rax\n"); } else { ostr("    movl (%eax), %eax\n    pushl %eax\n"); } }
     aw=0;
    } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
- } else if(d==1){ q=opn; opn=0;
+ } else if(d==1){ q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx();
    em_ld(so[s]);
    aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    ldr x0, [sp]\n    add sp, sp, #16\n");
     if(so_t[s]==1){ ostr("    ldrb w0, [x0, x1]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
     else { ostr("    lsl x1, x1, #3\n    add x0, x0, x1\n    ldr x0, [x0]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
@@ -691,24 +717,24 @@ else if(tk==T_ID){ if(aw==0){ se(); }
     if(so_t[s]==1){ ostr("    movzbl (%eax,%ecx), %eax\n    pushl %eax\n"); }
     else { ostr("    imull $4, %ecx\n    addl %ecx, %eax\n    movl (%eax), %eax\n    pushl %eax\n"); } }
    aw=0;
-  } else if(so_sz[s]>0){ q=opn; opn=0;
+  } else if(so_sz[s]>0){ q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    col=so_p[s];
    if(col>0){
-    if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+    if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
     nx(); aw=1; e_expr();
     if(tk!=T_RBKT){ se(); }
     nx();
-    opn=q;
+    opn=q; tbd=tbs;
     if(so_p2[s]>0){
-     if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+     if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
      nx(); aw=1; e_expr();
      if(tk!=T_RBKT){ se(); }
      nx();
-     opn=q;
+     opn=q; tbd=tbs;
      if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(col); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
      else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
       ostr("    imulq $"); oint(col); ostr(", %rcx\n");
@@ -735,11 +761,11 @@ else if(tk==T_ID){ if(aw==0){ se(); }
   g=gfd(); if(g<0){ se(); }
   if(gn[g]>0 && gstt[g]>=0){
    /* 全局 struct 数组元素访问（支持 .m 链） */
-   q=opn; opn=0;
+   q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[gstt[g]]); ostr("\n    mul x1, x1, x2\n    adrp x0, g"); oint(g); ostr("\n    add x0, x0, :lo12:g"); oint(g); ostr("\n    add x0, x0, x1\n"); }
    else if(g_am==1){ ostr("    popq %rcx\n");
    ostr("    imulq $"); oint(stsz[gstt[g]]); ostr(", %rcx\n");
@@ -770,23 +796,23 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    } else { if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x0, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rax\n"); } else { ostr("    pushl %eax\n"); } aw=0; }
   } else {
   if(gn[g]==0){ se(); }
-  q=opn; opn=0;
+  q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
   nx(); nx(); aw=1; e_expr();
   if(tk!=T_RBKT){ se(); }
   nx();
-  opn=q;
+  opn=q; tbd=tbs;
   if(gcol[g]>0){
-   if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+   if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(gcol2[g]>0){
-    if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+    if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
     nx(); aw=1; e_expr();
     if(tk!=T_RBKT){ se(); }
     nx();
-    opn=q;
+    opn=q; tbd=tbs;
     if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
     else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
      ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
@@ -918,11 +944,11 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
      pos=sp; tk=T_ID; tp=stp; tl=stl;
      s=fi_i();
      if(s==-1){ g=gfd(); if(g<0){ se(); } }
-     q=opn; opn=0;
+     q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
      nx(); nx(); aw=1; e_expr();
      if(tk!=T_RBKT){ se(); }
      nx();
-     opn=q;
+     opn=q; tbd=tbs;
      if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n"); } else if(g_am==1){ ostr("    popq %rcx\n"); } else { ostr("    popl %ecx\n"); }
      if(s!=-1){ if(so_p[s]==1){ esz=4; }
       else if(so_sz[s]>0){ if(so_st[s]>0){ esz=stsz[so_st[s]-1]; } else { if(so_t[s]==1){ esz=1; } else { esz=4; } } }
@@ -932,11 +958,11 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
          so_p=跨度（2D=列数 / 3D=D2*D3）、so_p2=第三维 D3、so_st>0 为 struct 数组只 1 维 */
       if(so_sz[s]>0){ if(so_st[s]==0){ if(so_p[s]>=2){
        if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x1, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
-       if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
-       if(tk!=T_RBKT){ se(); } nx(); opn=q;
+       if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1; nx(); aw=1; e_expr();
+       if(tk!=T_RBKT){ se(); } nx(); opn=q; tbd=tbs;
        if(so_p2[s]>0){
-        if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
-        if(tk!=T_RBKT){ se(); } nx(); opn=q;
+        if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1; nx(); aw=1; e_expr();
+        if(tk!=T_RBKT){ se(); } nx(); opn=q; tbd=tbs;
         if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(so_p[s]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
         else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(so_p[s]); ostr(", %rcx\n");
@@ -965,11 +991,11 @@ else if(tk==T_SLASH||tk==T_PERCENT||tk==T_SHL||tk==T_SHR||tk==T_BAND||tk==T_BOR|
       if(gstt[g]>=0){ esz=stsz[gstt[g]]; } else { if(gst[g]==1){ esz=1; } else { esz=4; } }
       if(gcol[g]>0){ if(gstt[g]<0){
        if(g_ar==1){ ostr("    sub sp, sp, #16\n    str x1, [sp]\n"); } else if(g_am==1){ ostr("    pushq %rcx\n"); } else { ostr("    pushl %ecx\n"); }
-       if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
-       if(tk!=T_RBKT){ se(); } nx(); opn=q;
+       if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1; nx(); aw=1; e_expr();
+       if(tk!=T_RBKT){ se(); } nx(); opn=q; tbd=tbs;
        if(gcol2[g]>0){
-        if(tk!=T_LBKT){ se(); } q=opn; opn=0; nx(); aw=1; e_expr();
-        if(tk!=T_RBKT){ se(); } nx(); opn=q;
+        if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1; nx(); aw=1; e_expr();
+        if(tk!=T_RBKT){ se(); } nx(); opn=q; tbd=tbs;
         if(g_ar==1){ ostr("    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x0, #"); oint(gcol[g]); ostr("\n    mul x1, x1, x0\n    mov x0, #"); oint(gcol2[g]); ostr("\n    mul x2, x2, x0\n    add x1, x1, x2\n    add x1, x1, x3\n"); }
         else if(g_am==1){ ostr("    popq %rdi\n    popq %rdx\n    popq %rcx\n");
          ostr("    imulq $"); oint(gcol[g]); ostr(", %rcx\n");
@@ -1136,7 +1162,21 @@ if(tk==T_ID){
    }
    nx();
   }
-  if(tk!=T_ASSIGN){ se(); }
+  if(tk!=T_ASSIGN){ /* 读成员（s.m / p->next 作 RHS 值）：镜像写路径发装载 */
+   if(g_ar==1){
+    if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+    if(fl==1){ ostr("    ldrb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+    else { ostr("    ldr x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+   else if(g_am==1){
+    if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
+    if(fl==1){ ostr("    movzbq (%rdx), %rax\n    pushq %rax\n"); }
+    else { ostr("    movq (%rdx), %rax\n    pushq %rax\n"); } }
+   else {
+    if(off>0){ if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %edx\n"); } else { ostr("    addl $"); oint(off); ostr(", %edx\n"); } }
+    if(fl==1){ ostr("    movzbl (%edx), %eax\n    pushl %eax\n"); }
+    else { ostr("    movl (%edx), %eax\n    pushl %eax\n"); } }
+   return;
+  }
   nx();
   p_a();
   if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n");
@@ -1181,11 +1221,11 @@ if(tk==T_ID){
   s=fi_i(); d=0;
   if(s!=-1){ if(so_p[s]==1){ d=1; } }
   if(s!=-1 && so_sz[s]>0 && so_st[s]>0){
-   q=opn; opn=0;
+   q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[so_st[s]-1]); ostr("\n    mul x1, x1, x2\n");
     if(so[s]<0){ ostr("    sub x2, x29, #"); oint(0-so[s]); ostr("\n"); } else { ostr("    add x2, x29, #"); oint(so[s]); ostr("\n"); }
     ostr("    add x2, x2, x1\n"); }
@@ -1228,13 +1268,13 @@ if(tk==T_ID){
    return;
   } else if(s!=-1 && so_pst[s]>0 && so_p[s]==1){
    /* struct 指针下标写 p[i].m = v：索引按 stsz 缩放，基址=指针值 */
-   q=opn; opn=0;
+   q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx();
    em_ld(so[s]);
    aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(tk==T_DOT){
     csid=so_pst[s]-1;
     nx();
@@ -1270,13 +1310,13 @@ if(tk==T_ID){
     else { ostr("    movl %eax, (%edx)\n    pushl %eax\n"); } }
    } else { se(); }
    return;
-  } else if(d==1){ q=opn; opn=0;
+  } else if(d==1){ q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx();
    em_ld(so[s]);
    aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(tk==T_ASSIGN){
     nx();
     p_a();
@@ -1302,24 +1342,24 @@ if(tk==T_ID){
     aw=0; e_expr();
    }
    return;
-  } else if(so_sz[s]>0){ q=opn; opn=0;
+  } else if(so_sz[s]>0){ q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    col=so_p[s];
    if(col>0){
-    if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+    if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
     nx(); aw=1; e_expr();
     if(tk!=T_RBKT){ se(); }
     nx();
-    opn=q;
+    opn=q; tbd=tbs;
     if(so_p2[s]>0){
-     if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+     if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
      nx(); aw=1; e_expr();
      if(tk!=T_RBKT){ se(); }
      nx();
-     opn=q;
+     opn=q; tbd=tbs;
      if(tk==T_ASSIGN){
       nx(); p_a();
       if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n    ldr x3, [sp]\n    add sp, sp, #16\n    ldr x2, [sp]\n    add sp, sp, #16\n    ldr x1, [sp]\n    add sp, sp, #16\n    mov x4, #"); oint(col); ostr("\n    mul x1, x1, x4\n    mov x4, #"); oint(so_p2[s]); ostr("\n    mul x2, x2, x4\n    add x1, x1, x2\n    add x1, x1, x3\n");
@@ -1417,11 +1457,11 @@ if(tk==T_ID){
   }
   g=gfd(); if(g<0){ se(); }
   if(gn[g]>0 && gstt[g]>=0){
-   q=opn; opn=0;
+   q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx(); nx(); aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(g_ar==1){ ostr("    ldr x1, [sp]\n    add sp, sp, #16\n    mov x2, #"); oint(stsz[gstt[g]]); ostr("\n    mul x1, x1, x2\n    adrp x2, g"); oint(g); ostr("\n    add x2, x2, :lo12:g"); oint(g); ostr("\n    add x2, x2, x1\n"); }
    else if(g_am==1){ ostr("    popq %rcx\n");
     ostr("    imulq $"); oint(stsz[gstt[g]]); ostr(", %rcx\n");
@@ -1463,26 +1503,26 @@ if(tk==T_ID){
    return;
   }
   if(gn[g]==0){ se(); }
-  q=opn; opn=0;
+  q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
   nx(); nx();
   aw=1; e_expr();
   if(tk!=T_RBKT){ se(); }
   nx();
-  opn=q;
+  opn=q; tbd=tbs;
   if(gcol[g]>0){
-   if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+   if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
    nx();
    aw=1; e_expr();
    if(tk!=T_RBKT){ se(); }
    nx();
-   opn=q;
+   opn=q; tbd=tbs;
    if(gcol2[g]>0){
-    if(tk!=T_LBKT){ se(); } q=opn; opn=0;
+    if(tk!=T_LBKT){ se(); } q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
     nx();
     aw=1; e_expr();
     if(tk!=T_RBKT){ se(); }
     nx();
-    opn=q;
+    opn=q; tbd=tbs;
     if(tk==T_ASSIGN){
      nx();
      p_a();
@@ -1589,11 +1629,11 @@ if(tk==T_ID){
   if(tk!=T_RPAREN){ se(); }
   nx();
   if(tk!=T_LBKT){ se(); }
-  q=opn; opn=0;
+  q=opn; oq[opn]=T_LPAREN; opn=opn+1; tbs=tbd; tbd=q+1;
   nx(); aw=1; e_expr();
   if(tk!=T_RBKT){ se(); }
   nx();
-  opn=q;
+  opn=q; tbd=tbs;
   if(tk!=T_ASSIGN){ se(); }
   nx();
   p_a();
@@ -1945,9 +1985,11 @@ else if(tk==T_FOR){ ns=1;
  nx(); /* body 起点 */
  p_s();
  bpos=pos; btk=tk; btp=tp; btl=tl;
+ j=0; while(j<17){ nm_sv[j]=nm[j]; j=j+1; }
  em_lbl(t1+1);
  if(incf==1){ pos=ip; nx(); cr=cr+1; aw=1; opn=0; p_a(); cr=cr-1; }
  pos=bpos; tk=btk; tp=btp; tl=btl;
+ j=0; while(j<17){ nm[j]=nm_sv[j]; j=j+1; }
  em_jmp(t1);
  ld=ld-1;
  em_lbl(t1+2); }
@@ -2229,7 +2271,12 @@ while(1){
   an=0;
   if(tk==T_UNION){ an=2; }
   nx();
-  if(tk==T_ID){ nsid=stfind(); if(nsid<0){ se(); } nx(); }
+  if(tk==T_ID){ nsid=stfind();
+   if(nsid<0){ /* 自引用指针成员：类型名与正在定义的结构同名（仅指针合法；值成员在下方特判拒绝） */
+    q=0; while(q<tl){ if(stnm[j*16+q]!=nm[q]){ break; } q=q+1; }
+    if(q==tl){ if(stnm[j*16+q]==0){ nsid=j; } }
+    if(nsid<0){ se(); } }
+   nx(); }
   else if(tk==T_LBRACE){ an=1;
    if(stt>=16){ se(); }
    nsid=stt; stt=stt+1; stnm[nsid*16+0]=0;
@@ -2260,11 +2307,12 @@ while(1){
    if(tk!=T_SEMI){ se(); } nx();
    if(tk==T_RBRACE){ break; }
   } else {
-  if(tk!=T_ID){ se(); }
-  if(smc[j]>=8){ se(); }
-  q=0; while(q<tl){ smn[j*128+smc[j]*16+q]=nm[q]; q=q+1; }
-  smn[j*128+smc[j]*16+tl]=0;
-  sz=stsz[nsid];
+ if(tk!=T_ID){ se(); }
+ if(nsid==j){ se(); } /* 自引用禁止值成员（struct node 内含 struct node 成员=无限大小） */
+ if(smc[j]>=8){ se(); }
+ q=0; while(q<tl){ smn[j*128+smc[j]*16+q]=nm[q]; q=q+1; }
+ smn[j*128+smc[j]*16+tl]=0;
+ sz=stsz[nsid];
   if(stu[j]==1){ off=0; } else {
    off=stsz[j];
    if(off-off/4*4!=0){ off=off+4-(off-off/4*4); }
@@ -2313,12 +2361,11 @@ void ptop_one(){ int sp; int stp; int stl; int j; int uf; int q;
   nx();
   pgsid=-1;
   if(tk==T_ID){
-   sp=pos; j=stfind();
+   sp=pos; stp=tp; stl=tl; j=stfind();
    nx();
    if(tk==T_LBRACE){
     if(j<0){ if(stt>=16){ se(); } j=stt; stt=stt+1;
-     pos=sp; nx();
-     q=0; while(q<tl){ stnm[j*16+q]=nm[q]; q=q+1; } stnm[j*16+tl]=0; }
+     q=0; while(q<stl){ stnm[j*16+q]=nm[q]; q=q+1; } stnm[j*16+stl]=0; }
     stu[j]=uf; stsz[j]=0; smc[j]=0;
     pstm(j);
     pgsid=j;
