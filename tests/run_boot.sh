@@ -366,6 +366,12 @@ run_case "struct node { int v; struct node *next; }; int main(){ struct node a; 
 run_case "struct node { int v; struct node *next; }; struct node g; int main(){ struct node a; struct node b; struct node c; int s; g.v=4; a.v=1; b.v=2; c.v=3; a.next=&b; b.next=&c; c.next=&g; g.next=0; s=0; struct node *p; p=&a; while(p!=0){ s=s+p->v; p=p->next; } return s; }" 10
 run_case "struct ab { int x; }; int main(){ struct ab s; int v; s.x=5; v=s.x; return v*2; }" 10
 
+echo "== B5-LC 回归（2026-08-27 LeetCode 压测）：链表反转/索引成员读写（p_a/e_expr 指针成员链修复） =="
+run_case "struct node { int v; struct node *next; }; struct node nodes[5]; int main(){ struct node *prev; struct node *cur; struct node *nx; int i; int sum; i=0; while(i<5){ nodes[i].v=i+1; nodes[i].next=0; if(i>0){ nodes[i-1].next=&nodes[i]; } i=i+1; } prev=0; cur=&nodes[0]; while(cur!=0){ nx=cur->next; cur->next=prev; prev=cur; cur=nx; } sum=0; cur=prev; while(cur!=0){ sum=sum*10+cur->v; cur=cur->next; } return sum; }" 54321
+run_case "struct node { int v; struct node *next; }; struct node nodes[3]; int main(){ int i; i=1; nodes[i].next=0; nodes[i].v=77; return nodes[i].v; }" 77
+run_case "struct node { int v; struct node *next; }; struct node nodes[3]; int main(){ nodes[0].next=&nodes[2]; nodes[2].v=55; return nodes[0].next->v; }" 55
+run_case "struct node { int v; struct node *next; }; struct node nodes[3]; int main(){ struct node *p; nodes[0].next=&nodes[1]; nodes[1].v=66; p=nodes[0].next; return p->v; }" 66
+
 echo "=============================="
 echo "PASS=$PASS FAIL=$FAIL (用例 $((PASS+FAIL)) 个)"
 [ "$FAIL" -eq 0 ]

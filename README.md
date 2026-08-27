@@ -40,6 +40,8 @@
 > 详见 [docs/design/platform-portability.md](docs/design/platform-portability.md)。此后每个阶段完成即上传 GitHub。
 >
 > **2026-08-27 B5 链上缺陷修复**：外部评测矩阵驱动根治四缺陷——①for 语句"扫描+回放"增量解析污染 `nm[]`（语句后按名查找失配）；②下标索引表达式操作符覆盖外层待定操作符（`a[j]>a[j+1]` 被编译为 `a[j]+a[j+1]`，冒泡 if 恒真）；③struct 类型名登记截断（多字母结构名全挂，1 字母名恰巧合掩盖）；④struct 自引用指针成员（`struct node *next`）＋成员读作 RHS（`x=s.m`/`p=p->next`）。冒泡排序与 `struct` 自引用链表三目标（i386/AMD64/ARM64）行为全部正确；run_boot 232→**237/237** 全绿，boot_b4/boot_amd/boot_arm 三闭台固定点不破；详见 [docs/logs/2026-08-27.md](docs/logs/2026-08-27.md)。
+>
+> **2026-08-27 LeetCode 经典题压测**：16 题矩阵（两数之和/二分查找/链表反转/有效括号/爬楼梯/最大子序和/罗马数字/回文串/异或找单数/移动零/合并有序/去重/买卖股票/整数平方根等）build/lc_run.sh 驱动，11/16 → **16/16**。暴露出并修复第五个缺陷：struct 数组元素 `.m` 索引成员读写路径不支持指针成员（`nodes[i].next` 报 `error: N next`，B5-2 遗留的 `x=arr[i].m` 登记项一并清零）。另验证并登记：`mid*mid` 32 位溢出（方言无 64 位整数，`x/mid` 防溢出改写）；AMD64/AArch64 后端成员存取宽度 8B 与 struct 布局 4B 不一致（预存缺陷，print_decimal 低 32 位打印掩蔽，按类型定宽改造另行立项）。run_boot 237→**241/241**，三闭台不破；详见 [docs/logs/2026-08-27.md](docs/logs/2026-08-27.md)。
 
 - 许可证：MIT
 - 语言：目标 C（编译器本体以无蛋方式从 i386 汇编层起步，见基线 §6；当前已可用 pggcc 语言自举，见 architecture-b2）
@@ -57,7 +59,7 @@
 | [ORIGIN.md](ORIGIN.md) | **实现来源声明**：5 条原则（不读源码 / 门控对照 / 源码不存留）、逐特性登记表、标准参考表 |
 | [docs/logs/](docs/logs/) | **按日操作流水账**：append-only，随 commit 推送 GitHub，AI 行为公开留痕 |
 | [tests/run.sh](tests/run.sh) | **主链自证管线**：pggcc → `as --32` → `ld`（无 crt）→ 运行比对手算期望值；当前 **72/72** |
-| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **237/237** |
+| [tests/run_boot.sh](tests/run_boot.sh) | **自举自证管线**：`bin0`（pggcc4 编译 `boot0.pgc` 所得）→ `as --32` → `ld` → 运行比对；当前 **241/241** |
 | [tests/boot_b4.sh](tests/boot_b4.sh) | **B4 煮蛋闭台门**：bin0→bin1→bin2 逐字节固定点 ＋ 三头行为矩阵 ＋ pg_quiet 语义回归；**已全门通过（2026-08-26）** |
 
 ## 路线图
@@ -109,7 +111,7 @@ ld -m elf_i386 -o build/bin0 build/bin0.o               # bin0 = B0 编译器
 
 ```bash
 bash tests/run.sh        # 主链：v0–v4.1 全部用例，72/72
-bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，237/237
+bash tests/run_boot.sh   # 自举支线：bin0 复跑历史用例集 + 自编译冒烟，241/241
 ```
 
 ## 贡献者

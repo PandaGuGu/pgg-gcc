@@ -776,17 +776,26 @@ else if(tk==T_ID){ if(aw==0){ se(); }
    if(tk==T_DOT){
     csid=gstt[g];
     nx();
-    off=0; fl=0;
+    off=0; fl=0; op3=0;
     while(1){
      if(tk!=T_ID){ se(); }
      mid=mfind(csid); if(mid<0){ se(); }
-     off=off+smo[csid*8+mid];
      ty=smt[csid*8+mid];
-     if(ty==3){ se(); }
-     if(ty==2){ csid=sms[csid*8+mid]; }
-     else { if(ty==1){ fl=1; } else { fl=0; } }
+     off=off+smo[csid*8+mid];
+     if(ty==3){ op3=1; pt=mid; fl=0; }
+     else { op3=0;
+      if(ty==2){ csid=sms[csid*8+mid]; }
+      else { if(ty==1){ fl=1; } else { fl=0; } }
+     }
      nx();
      if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
+     if(op3==1){
+      /* 指针成员且链继续：装载指针值换基，分段发码 */
+      if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
+      if(g_ar==1){ ostr("    ldr x0, [x0]\n"); } else if(g_am==1){ ostr("    movq (%rax), %rax\n"); } else { ostr("    movl (%eax), %eax\n"); }
+      csid=sms[csid*8+pt];
+      off=0; fl=-1;
+     }
      nx();
     }
     if(off>0){ if(g_ar==1){ ostr("    add x0, x0, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rax\n"); } else { ostr("    addl $"); oint(off); ostr(", %eax\n"); } }
@@ -1472,20 +1481,43 @@ if(tk==T_ID){
    if(tk!=T_DOT){ se(); }
    csid=gstt[g];
    nx();
-   off=0; fl=0;
+   off=0; fl=0; op3=0;
    while(1){
     if(tk!=T_ID){ se(); }
     mid=mfind(csid); if(mid<0){ se(); }
-    off=off+smo[csid*8+mid];
     ty=smt[csid*8+mid];
-    if(ty==3){ se(); }
-    if(ty==2){ csid=sms[csid*8+mid]; }
-    else { if(ty==1){ fl=1; } else { fl=0; } }
+    off=off+smo[csid*8+mid];
+    if(ty==3){ op3=1; pt=mid; fl=0; }
+    else { op3=0;
+     if(ty==2){ csid=sms[csid*8+mid]; }
+     else { if(ty==1){ fl=1; } else { fl=0; } }
+    }
     nx();
     if(tk!=T_DOT){ if(tk!=T_ARROW){ break; } }
+    if(op3==1){
+     /* 指针成员且链继续：装载指针值换基，分段发码 */
+     if(off>0){ if(g_ar==1){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); } else if(g_am==1){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); } else { ostr("    addl $"); oint(off); ostr(", %edx\n"); } }
+     if(g_ar==1){ ostr("    ldr x2, [x2]\n"); } else if(g_am==1){ ostr("    movq (%rdx), %rdx\n"); } else { ostr("    movl (%edx), %edx\n"); }
+     csid=sms[csid*8+pt];
+     off=0; fl=-1;
+    }
     nx();
    }
-   if(tk!=T_ASSIGN){ se(); }
+   if(tk!=T_ASSIGN){ /* 读成员（nodes[i].m 作 RHS 值）：镜像写路径发装载 */
+    if(g_ar==1){
+     if(off>0){ ostr("    add x2, x2, #"); oint(off); ostr("\n"); }
+     if(fl==1){ ostr("    ldrb w0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); }
+     else { ostr("    ldr x0, [x2]\n    sub sp, sp, #16\n    str x0, [sp]\n"); } }
+    else if(g_am==1){
+     if(off>0){ ostr("    addq $"); oint(off); ostr(", %rdx\n"); }
+     if(fl==1){ ostr("    movzbq (%rdx), %rax\n    pushq %rax\n"); }
+     else { ostr("    movq (%rdx), %rax\n    pushq %rax\n"); } }
+    else {
+     if(off>0){ ostr("    addl $"); oint(off); ostr(", %edx\n"); }
+     if(fl==1){ ostr("    movzbl (%edx), %eax\n    pushl %eax\n"); }
+     else { ostr("    movl (%edx), %eax\n    pushl %eax\n"); } }
+    return;
+   }
    nx();
    p_a();
    if(g_ar==1){ ostr("    ldr x0, [sp]\n    add sp, sp, #16\n");
